@@ -30,7 +30,7 @@ export default function LoginScreen() {
 
     const handleLogin = async () => {
         if (!email || !password) {
-            Alert.alert('Error', 'Please fill in all fields');
+            Alert.alert(t('common.error'), t('auth.fillAllFields'));
             return;
         }
 
@@ -57,10 +57,10 @@ export default function LoginScreen() {
                 await AsyncStorage.setItem('userEmail', email);
                 router.replace('/(tabs)');
             } else {
-                Alert.alert('Error', data.detail || 'Login failed. Please check your credentials.');
+                Alert.alert(t('common.error'), data.detail || t('auth.loginFailed'));
             }
         } catch (error) {
-            Alert.alert('Error', 'Unable to connect to server. Please try again.');
+            Alert.alert(t('common.error'), t('auth.serverError'));
             console.error('Login error:', error);
         } finally {
             setLoading(false);

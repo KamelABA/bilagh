@@ -1,5 +1,6 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTranslation } from '@/hooks/useTranslation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -16,6 +17,7 @@ import {
 export default function ReportsScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
+    const { t } = useTranslation();
     const isDark = colorScheme === 'dark';
     const [activeTab, setActiveTab] = useState<'submit' | 'reports'>('submit');
     const [selectedFilter, setSelectedFilter] = useState('all');
@@ -32,13 +34,28 @@ export default function ReportsScreen() {
 
     // Mock data
     const reports = [
-        { id: 1, type: 'Pothole', location: 'Main St', status: 'pending', date: '2h ago' },
-        { id: 2, type: 'Crack', location: 'Oak Ave', status: 'pending', date: '1d ago' },
+        { id: 1, type: t('reports.pothole'), location: 'Main St', status: 'pending', date: '2h ago' },
+        { id: 2, type: t('reports.crack'), location: 'Oak Ave', status: 'pending', date: '1d ago' },
     ];
 
     const filteredReports = selectedFilter === 'all'
         ? reports
         : reports.filter(r => r.status === selectedFilter);
+
+    const getFilterLabel = (filter: string) => {
+        switch (filter) {
+            case 'all':
+                return t('reports.all');
+            case 'pending':
+                return t('reports.pending');
+            case 'in-progress':
+                return t('reports.inProgress');
+            case 'resolved':
+                return t('reports.resolved');
+            default:
+                return filter.charAt(0).toUpperCase() + filter.slice(1);
+        }
+    };
 
     return (
         <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
@@ -47,9 +64,9 @@ export default function ReportsScreen() {
                 colors={isDark ? ['#1a1a1a', '#0a0a0a'] : ['#0B5394', '#4A7C2C']}
                 style={styles.header}
             >
-                <Text style={styles.headerTitle}>Reports</Text>
+                <Text style={styles.headerTitle}>{t('reports.reports')}</Text>
                 <Text style={styles.headerSubtitle}>
-                    {activeTab === 'submit' ? 'Submit new damage report' : `${reports.length} total reports`}
+                    {activeTab === 'submit' ? t('reports.submitNewDamageReport') : `${reports.length} ${t('reports.totalReports')}`}
                 </Text>
 
                 {/* Tab Switcher */}
@@ -68,7 +85,7 @@ export default function ReportsScreen() {
                                 { color: activeTab === 'submit' ? '#0B5394' : '#fff' },
                             ]}
                         >
-                            Submit
+                            {t('reports.submit')}
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -85,7 +102,7 @@ export default function ReportsScreen() {
                                 { color: activeTab === 'reports' ? '#0B5394' : '#fff' },
                             ]}
                         >
-                            My Reports
+                            {t('reports.myReports')}
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -95,31 +112,31 @@ export default function ReportsScreen() {
                 // Submit Form
                 <ScrollView style={styles.content}>
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>Damage Type</Text>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.type')}</Text>
                         <View style={[styles.input, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                             <TextInput
-                                placeholder="Select type..."
+                                placeholder={t('reports.selectType')}
                                 placeholderTextColor={isDark ? '#666' : '#999'}
                                 style={{ color: isDark ? '#fff' : '#000', flex: 1 }}
                             />
                         </View>
                     </View>
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>Location</Text>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.location')}</Text>
                         <View style={[styles.input, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                             <IconSymbol name="location.fill" size={20} color="#0B5394" />
                             <TextInput
-                                placeholder="Enter location..."
+                                placeholder={t('reports.enterLocation')}
                                 placeholderTextColor={isDark ? '#666' : '#999'}
                                 style={{ color: isDark ? '#fff' : '#000', flex: 1, marginLeft: 8 }}
                             />
                         </View>
                     </View>
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>Description</Text>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.description')}</Text>
                         <View style={[styles.textArea, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                             <TextInput
-                                placeholder="Describe the damage..."
+                                placeholder={t('reports.enterDescription')}
                                 placeholderTextColor={isDark ? '#666' : '#999'}
                                 style={{ color: isDark ? '#fff' : '#000' }}
                                 multiline
@@ -128,7 +145,7 @@ export default function ReportsScreen() {
                         </View>
                     </View>
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>Photo</Text>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.photo')}</Text>
                         <TouchableOpacity
                             onPress={() => router.push('/camera')}
                             activeOpacity={0.7}
@@ -145,14 +162,14 @@ export default function ReportsScreen() {
                                             onPress={() => router.push('/camera')}
                                         >
                                             <IconSymbol name="camera.fill" size={16} color="#fff" />
-                                            <Text style={styles.changePhotoText}>Change Photo</Text>
+                                            <Text style={styles.changePhotoText}>{t('reports.changePhoto')}</Text>
                                         </TouchableOpacity>
                                     </View>
                                 ) : (
                                     <View style={styles.photoPlaceholder}>
                                         <IconSymbol name="camera.fill" size={40} color={isDark ? '#666' : '#999'} />
                                         <Text style={[styles.photoPlaceholderText, { color: isDark ? '#666' : '#999' }]}>
-                                            Tap to take photo
+                                            {t('reports.tapToTakePhoto')}
                                         </Text>
                                     </View>
                                 )}
@@ -167,7 +184,7 @@ export default function ReportsScreen() {
                             end={{ x: 1, y: 1 }}
                         >
                             <IconSymbol name="checkmark.circle.fill" size={24} color="#fff" />
-                            <Text style={styles.submitText}>Submit Report</Text>
+                            <Text style={styles.submitText}>{t('reports.submitReport')}</Text>
                         </LinearGradient>
                     </TouchableOpacity>
                 </ScrollView>
@@ -212,7 +229,7 @@ export default function ReportsScreen() {
                                             },
                                         ]}
                                     >
-                                        {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                                        {getFilterLabel(filter)}
                                     </Text>
                                 </View>
                             </TouchableOpacity>
@@ -230,7 +247,7 @@ export default function ReportsScreen() {
                                     </Text>
                                     <View style={[styles.statusBadge, { backgroundColor: '#FF6B6B20' }]}>
                                         <Text style={[styles.statusText, { color: '#FF6B6B' }]}>
-                                            {report.status.toUpperCase()}
+                                            {t('reports.pending').toUpperCase()}
                                         </Text>
                                     </View>
                                 </View>

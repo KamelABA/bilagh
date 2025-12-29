@@ -1,5 +1,11 @@
+import { Platform } from 'react-native';
+
 // API Configuration
-export const API_URL = 'http://192.168.2.224:8000';
+// Use localhost for web, use your machine's IP for mobile devices
+const LOCAL_IP = '192.168.2.224';
+export const API_URL = Platform.OS === 'web'
+    ? 'http://localhost:8000'
+    : `http://${LOCAL_IP}:8000`;
 
 export const API_ENDPOINTS = {
     // Auth

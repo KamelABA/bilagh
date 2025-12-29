@@ -1,5 +1,6 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTranslation } from '@/hooks/useTranslation';
 import { apiService } from '@/services/api';
 import { User } from '@/types/backend';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import {
 export default function ProfileScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
+    const { t, locale } = useTranslation();
     const isDark = colorScheme === 'dark';
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
@@ -54,15 +56,15 @@ export default function ProfileScreen() {
         return (
             <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5', justifyContent: 'center', alignItems: 'center' }]}>
                 <ActivityIndicator size="large" color="#0B5394" />
-                <Text style={{ color: isDark ? '#fff' : '#000', marginTop: 16 }}>Loading profile...</Text>
+                <Text style={{ color: isDark ? '#fff' : '#000', marginTop: 16 }}>{t('profile.loadingProfile')}</Text>
             </View>
         );
     }
 
     const stats = [
-        { label: 'Reports', value: reportCount.toString(), icon: 'doc.text.fill', color: '#FF6B6B' },
-        { label: 'Points', value: user?.points.toString() || '0', icon: 'star.fill', color: '#FFE66D' },
-        { label: 'Role', value: user?.role === 'admin' ? 'Admin' : 'User', icon: 'person.circle.fill', color: '#4ECDC4' },
+        { label: t('home.reports'), value: reportCount.toString(), icon: 'doc.text.fill', color: '#FF6B6B' },
+        { label: t('profile.points'), value: user?.points.toString() || '0', icon: 'star.fill', color: '#FFE66D' },
+        { label: t('profile.role'), value: user?.role === 'admin' ? t('profile.admin') : t('profile.user'), icon: 'person.circle.fill', color: '#4ECDC4' },
     ];
 
     return (
@@ -94,7 +96,7 @@ export default function ProfileScreen() {
                             <IconSymbol name="camera.fill" size={16} color="#fff" />
                         </TouchableOpacity>
                     </View>
-                    <Text style={styles.userName}>{user?.full_name || 'User'}</Text>
+                    <Text style={styles.userName}>{user?.full_name || t('profile.user')}</Text>
                     <Text style={styles.userEmail}>{user?.email || ''}</Text>
                 </View>
             </LinearGradient>
@@ -125,7 +127,7 @@ export default function ProfileScreen() {
             {/* User Info Card */}
             <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#000' }]}>
-                    Account Information
+                    {t('profile.accountInfo')}
                 </Text>
                 <View
                     style={[
@@ -135,43 +137,43 @@ export default function ProfileScreen() {
                 >
                     <View style={styles.infoItem}>
                         <Text style={[styles.infoLabel, { color: isDark ? '#999' : '#666' }]}>
-                            Full Name
+                            {t('profile.fullName')}
                         </Text>
                         <Text style={[styles.infoValue, { color: isDark ? '#fff' : '#000' }]}>
-                            {user?.full_name || 'Not set'}
+                            {user?.full_name || t('common.notSet')}
                         </Text>
                     </View>
                     <View style={[styles.divider, { backgroundColor: isDark ? '#333' : '#e0e0e0' }]} />
                     <View style={styles.infoItem}>
                         <Text style={[styles.infoLabel, { color: isDark ? '#999' : '#666' }]}>
-                            Username
+                            {t('profile.username')}
                         </Text>
                         <Text style={[styles.infoValue, { color: isDark ? '#fff' : '#000' }]}>
-                            {user?.username || 'Not set'}
+                            {user?.username || t('common.notSet')}
                         </Text>
                     </View>
                     <View style={[styles.divider, { backgroundColor: isDark ? '#333' : '#e0e0e0' }]} />
                     <View style={styles.infoItem}>
                         <Text style={[styles.infoLabel, { color: isDark ? '#999' : '#666' }]}>
-                            Email
+                            {t('profile.email')}
                         </Text>
                         <Text style={[styles.infoValue, { color: isDark ? '#fff' : '#000' }]}>
-                            {user?.email || 'Not set'}
+                            {user?.email || t('common.notSet')}
                         </Text>
                     </View>
                     <View style={[styles.divider, { backgroundColor: isDark ? '#333' : '#e0e0e0' }]} />
                     <View style={styles.infoItem}>
                         <Text style={[styles.infoLabel, { color: isDark ? '#999' : '#666' }]}>
-                            Phone
+                            {t('profile.phone')}
                         </Text>
                         <Text style={[styles.infoValue, { color: isDark ? '#fff' : '#000' }]}>
-                            {user?.phone || 'Not set'}
+                            {user?.phone || t('common.notSet')}
                         </Text>
                     </View>
                     <View style={[styles.divider, { backgroundColor: isDark ? '#333' : '#e0e0e0' }]} />
                     <View style={styles.infoItem}>
                         <Text style={[styles.infoLabel, { color: isDark ? '#999' : '#666' }]}>
-                            User ID
+                            {t('profile.userId')}
                         </Text>
                         <Text style={[styles.infoValue, { color: isDark ? '#fff' : '#000' }]}>
                             #{user?.id || '0'}
@@ -180,14 +182,14 @@ export default function ProfileScreen() {
                     <View style={[styles.divider, { backgroundColor: isDark ? '#333' : '#e0e0e0' }]} />
                     <View style={styles.infoItem}>
                         <Text style={[styles.infoLabel, { color: isDark ? '#999' : '#666' }]}>
-                            Member Since
+                            {t('profile.memberSince')}
                         </Text>
                         <Text style={[styles.infoValue, { color: isDark ? '#fff' : '#000' }]}>
-                            {user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', {
+                            {user?.created_at ? new Date(user.created_at).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US', {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric'
-                            }) : 'Unknown'}
+                            }) : t('common.unknown')}
                         </Text>
                     </View>
                 </View>
@@ -196,7 +198,7 @@ export default function ProfileScreen() {
             {/* Notifications Section */}
             <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#000' }]}>
-                    Recent Notifications
+                    {t('profile.recentNotifications')}
                 </Text>
                 <View
                     style={[
@@ -210,13 +212,13 @@ export default function ProfileScreen() {
                         </View>
                         <View style={styles.notificationContent}>
                             <Text style={[styles.notificationTitle, { color: isDark ? '#fff' : '#000' }]}>
-                                Report Approved
+                                {t('profile.reportApproved')}
                             </Text>
                             <Text style={[styles.notificationText, { color: isDark ? '#999' : '#666' }]}>
-                                Your pothole report on Main St has been verified
+                                {t('profile.yourPotholeReportVerified')}
                             </Text>
                             <Text style={[styles.notificationTime, { color: isDark ? '#666' : '#999' }]}>
-                                2 hours ago
+                                2 {t('profile.hoursAgo')}
                             </Text>
                         </View>
                     </View>
@@ -227,13 +229,13 @@ export default function ProfileScreen() {
                         </View>
                         <View style={styles.notificationContent}>
                             <Text style={[styles.notificationTitle, { color: isDark ? '#fff' : '#000' }]}>
-                                Points Earned
+                                {t('profile.pointsEarned')}
                             </Text>
                             <Text style={[styles.notificationText, { color: isDark ? '#999' : '#666' }]}>
-                                You earned 50 points for your contribution
+                                {t('profile.youEarnedPoints')}
                             </Text>
                             <Text style={[styles.notificationTime, { color: isDark ? '#666' : '#999' }]}>
-                                1 day ago
+                                1 {t('profile.dayAgo')}
                             </Text>
                         </View>
                     </View>
@@ -244,13 +246,13 @@ export default function ProfileScreen() {
                         </View>
                         <View style={styles.notificationContent}>
                             <Text style={[styles.notificationTitle, { color: isDark ? '#fff' : '#000' }]}>
-                                New Damage Nearby
+                                {t('profile.newDamageNearby')}
                             </Text>
                             <Text style={[styles.notificationText, { color: isDark ? '#999' : '#666' }]}>
-                                Road damage reported 0.5km from your location
+                                {t('profile.roadDamageReportedNearby')}
                             </Text>
                             <Text style={[styles.notificationTime, { color: isDark ? '#666' : '#999' }]}>
-                                3 days ago
+                                3 {t('profile.daysAgo')}
                             </Text>
                         </View>
                     </View>
@@ -259,10 +261,10 @@ export default function ProfileScreen() {
 
             <View style={styles.footer}>
                 <Text style={[styles.footerText, { color: isDark ? '#666' : '#999' }]}>
-                    Bilagh v1.0.0
+                    {t('common.appName')} {t('profile.version')}
                 </Text>
                 <Text style={[styles.footerText, { color: isDark ? '#666' : '#999' }]}>
-                    © 2025 Road Damage Detector
+                    {t('profile.copyright')}
                 </Text>
             </View>
         </ScrollView>

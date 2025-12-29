@@ -33,17 +33,17 @@ export default function SignupScreen() {
 
     const handleSignup = async () => {
         if (!fullName || !email || !password || !confirmPassword) {
-            Alert.alert('Error', 'Please fill in all required fields');
+            Alert.alert(t('common.error'), t('auth.fillAllFields'));
             return;
         }
 
         if (password !== confirmPassword) {
-            Alert.alert('Error', 'Passwords do not match');
+            Alert.alert(t('common.error'), t('auth.passwordsDontMatch'));
             return;
         }
 
         if (password.length < 6) {
-            Alert.alert('Error', 'Password must be at least 6 characters');
+            Alert.alert(t('common.error'), t('auth.passwordTooShort'));
             return;
         }
 
@@ -88,15 +88,15 @@ export default function SignupScreen() {
                     await AsyncStorage.setItem('userName', fullName);
                     router.replace('/(tabs)');
                 } else {
-                    Alert.alert('Success', 'Account created! Please login.', [
+                    Alert.alert(t('common.success'), t('auth.accountCreatedPleaseLogin'), [
                         { text: 'OK', onPress: () => router.replace('/login') }
                     ]);
                 }
             } else {
-                Alert.alert('Error', data.detail || 'Signup failed. Email may already be registered.');
+                Alert.alert(t('common.error'), data.detail || t('auth.signupFailed'));
             }
         } catch (error) {
-            Alert.alert('Error', 'Unable to connect to server. Please try again.');
+            Alert.alert(t('common.error'), t('auth.serverError'));
             console.error('Signup error:', error);
         } finally {
             setLoading(false);
@@ -114,7 +114,7 @@ export default function SignupScreen() {
                 </TouchableOpacity>
                 <View style={styles.logoContainer}>
                     <IconSymbol name="mappin.circle.fill" size={50} color="#fff" />
-                    <Text style={styles.appName}>Create Account</Text>
+                    <Text style={styles.appName}>{t('auth.createAccount')}</Text>
                 </View>
             </LinearGradient>
 
@@ -127,19 +127,19 @@ export default function SignupScreen() {
                     showsVerticalScrollIndicator={false}
                 >
                     <Text style={[styles.subtitle, { color: isDark ? '#999' : '#666' }]}>
-                        Join Bilagh to report and track road damage
+                        {t('auth.signupSubtitle')}
                     </Text>
 
                     <View style={styles.form}>
                         <View style={styles.inputGroup}>
                             <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
-                                Full Name *
+                                {t('auth.fullName')} *
                             </Text>
                             <View style={[styles.inputContainer, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                                 <IconSymbol name="person.fill" size={20} color="#0B5394" />
                                 <TextInput
                                     style={[styles.input, { color: isDark ? '#fff' : '#000' }]}
-                                    placeholder="Enter your full name"
+                                    placeholder={t('auth.enterFullName')}
                                     placeholderTextColor={isDark ? '#666' : '#999'}
                                     value={fullName}
                                     onChangeText={setFullName}
@@ -149,13 +149,13 @@ export default function SignupScreen() {
 
                         <View style={styles.inputGroup}>
                             <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
-                                Email *
+                                {t('auth.email')} *
                             </Text>
                             <View style={[styles.inputContainer, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                                 <IconSymbol name="envelope.fill" size={20} color="#0B5394" />
                                 <TextInput
                                     style={[styles.input, { color: isDark ? '#fff' : '#000' }]}
-                                    placeholder="Enter your email"
+                                    placeholder={t('auth.enterEmail')}
                                     placeholderTextColor={isDark ? '#666' : '#999'}
                                     value={email}
                                     onChangeText={setEmail}
@@ -167,13 +167,13 @@ export default function SignupScreen() {
 
                         <View style={styles.inputGroup}>
                             <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
-                                Phone (Optional)
+                                {t('auth.phone')} ({t('auth.optional')})
                             </Text>
                             <View style={[styles.inputContainer, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                                 <IconSymbol name="phone.fill" size={20} color="#0B5394" />
                                 <TextInput
                                     style={[styles.input, { color: isDark ? '#fff' : '#000' }]}
-                                    placeholder="Enter your phone number"
+                                    placeholder={t('auth.enterPhone')}
                                     placeholderTextColor={isDark ? '#666' : '#999'}
                                     value={phone}
                                     onChangeText={setPhone}
@@ -184,13 +184,13 @@ export default function SignupScreen() {
 
                         <View style={styles.inputGroup}>
                             <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
-                                Password *
+                                {t('auth.password')} *
                             </Text>
                             <View style={[styles.inputContainer, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                                 <IconSymbol name="lock.fill" size={20} color="#0B5394" />
                                 <TextInput
                                     style={[styles.input, { color: isDark ? '#fff' : '#000' }]}
-                                    placeholder="Create a password"
+                                    placeholder={t('auth.createPassword')}
                                     placeholderTextColor={isDark ? '#666' : '#999'}
                                     value={password}
                                     onChangeText={setPassword}
@@ -201,13 +201,13 @@ export default function SignupScreen() {
 
                         <View style={styles.inputGroup}>
                             <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
-                                Confirm Password *
+                                {t('auth.confirmPassword')} *
                             </Text>
                             <View style={[styles.inputContainer, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                                 <IconSymbol name="lock.fill" size={20} color="#0B5394" />
                                 <TextInput
                                     style={[styles.input, { color: isDark ? '#fff' : '#000' }]}
-                                    placeholder="Confirm your password"
+                                    placeholder={t('auth.confirmYourPassword')}
                                     placeholderTextColor={isDark ? '#666' : '#999'}
                                     value={confirmPassword}
                                     onChangeText={setConfirmPassword}
@@ -228,7 +228,7 @@ export default function SignupScreen() {
                                 end={{ x: 1, y: 1 }}
                             >
                                 <Text style={styles.signupButtonText}>
-                                    {loading ? 'Creating Account...' : 'Sign Up'}
+                                    {loading ? t('auth.creatingAccount') : t('auth.signup')}
                                 </Text>
                             </LinearGradient>
                         </TouchableOpacity>
@@ -238,8 +238,8 @@ export default function SignupScreen() {
                             style={styles.loginLink}
                         >
                             <Text style={[styles.loginText, { color: isDark ? '#999' : '#666' }]}>
-                                Already have an account?{' '}
-                                <Text style={styles.loginTextBold}>Sign In</Text>
+                                {t('auth.alreadyHaveAccount')}{' '}
+                                <Text style={styles.loginTextBold}>{t('auth.login')}</Text>
                             </Text>
                         </TouchableOpacity>
                     </View>

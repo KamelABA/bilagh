@@ -19,7 +19,7 @@ import {
 export default function SettingsScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const isDark = colorScheme === 'dark';
 
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -29,12 +29,12 @@ export default function SettingsScreen() {
 
     const handleLogout = async () => {
         Alert.alert(
-            'Logout',
-            'Are you sure you want to logout?',
+            t('settings.logout'),
+            t('settings.logoutConfirm'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('settings.cancel'), style: 'cancel' },
                 {
-                    text: 'Logout',
+                    text: t('settings.logout'),
                     style: 'destructive',
                     onPress: async () => {
                         await AsyncStorage.clear();
@@ -47,10 +47,10 @@ export default function SettingsScreen() {
 
     const settingsSections = [
         {
-            title: 'Permissions',
+            titleKey: 'settings.permissions',
             items: [
                 {
-                    label: 'Notifications',
+                    labelKey: 'settings.notifications',
                     icon: 'bell.fill',
                     color: '#0B5394',
                     type: 'toggle',
@@ -58,7 +58,7 @@ export default function SettingsScreen() {
                     onToggle: setNotificationsEnabled,
                 },
                 {
-                    label: 'Location Services',
+                    labelKey: 'settings.locationServices',
                     icon: 'location.fill',
                     color: '#4A7C2C',
                     type: 'toggle',
@@ -66,7 +66,7 @@ export default function SettingsScreen() {
                     onToggle: setLocationEnabled,
                 },
                 {
-                    label: 'Camera Access',
+                    labelKey: 'settings.cameraAccess',
                     icon: 'camera.fill',
                     color: '#FF6B6B',
                     type: 'link',
@@ -74,10 +74,10 @@ export default function SettingsScreen() {
             ],
         },
         {
-            title: 'Preferences',
+            titleKey: 'settings.preferences',
             items: [
                 {
-                    label: 'Dark Mode',
+                    labelKey: 'settings.darkMode',
                     icon: 'moon.fill',
                     color: '#FFE66D',
                     type: 'toggle',
@@ -85,39 +85,32 @@ export default function SettingsScreen() {
                     onToggle: setDarkModeEnabled,
                 },
                 {
-                    label: 'Sound Effects',
+                    labelKey: 'settings.soundEffects',
                     icon: 'speaker.fill',
                     color: '#4ECDC4',
                     type: 'toggle',
                     value: soundEnabled,
                     onToggle: setSoundEnabled,
                 },
-                {
-                    label: 'Language',
-                    icon: 'globe',
-                    color: '#A8E6CF',
-                    type: 'link',
-                    value: 'English',
-                },
             ],
         },
         {
-            title: 'Privacy & Security',
+            titleKey: 'settings.privacySecurity',
             items: [
                 {
-                    label: 'Privacy Settings',
+                    labelKey: 'settings.privacySettings',
                     icon: 'hand.raised.fill',
                     color: '#FF8E53',
                     type: 'link',
                 },
                 {
-                    label: 'Change Password',
+                    labelKey: 'settings.changePassword',
                     icon: 'lock.fill',
                     color: '#764ba2',
                     type: 'link',
                 },
                 {
-                    label: 'Data & Storage',
+                    labelKey: 'settings.dataStorage',
                     icon: 'internaldrive.fill',
                     color: '#56AB91',
                     type: 'link',
@@ -125,23 +118,23 @@ export default function SettingsScreen() {
             ],
         },
         {
-            title: 'About',
+            titleKey: 'settings.about',
             items: [
                 {
-                    label: 'App Version',
+                    labelKey: 'settings.appVersion',
                     icon: 'info.circle.fill',
                     color: '#667eea',
                     type: 'info',
                     value: '1.0.0',
                 },
                 {
-                    label: 'Terms of Service',
+                    labelKey: 'settings.termsOfService',
                     icon: 'doc.text.fill',
                     color: '#0B5394',
                     type: 'link',
                 },
                 {
-                    label: 'Privacy Policy',
+                    labelKey: 'settings.privacyPolicy',
                     icon: 'shield.fill',
                     color: '#4A7C2C',
                     type: 'link',
@@ -178,7 +171,7 @@ export default function SettingsScreen() {
                 {settingsSections.map((section, sectionIndex) => (
                     <View key={sectionIndex} style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#000' }]}>
-                            {section.title}
+                            {t(section.titleKey)}
                         </Text>
                         <View
                             style={[
@@ -194,16 +187,16 @@ export default function SettingsScreen() {
                                                 <IconSymbol name={item.icon as any} size={20} color={item.color} />
                                             </View>
                                             <Text style={[styles.settingLabel, { color: isDark ? '#fff' : '#000' }]}>
-                                                {item.label}
+                                                {t(item.labelKey)}
                                             </Text>
                                         </View>
                                         <View style={styles.settingRight}>
                                             {item.type === 'toggle' && (
                                                 <Switch
-                                                    value={item.value}
-                                                    onValueChange={item.onToggle}
+                                                    value={item.value as boolean}
+                                                    onValueChange={item.onToggle as (value: boolean) => void}
                                                     trackColor={{ false: '#767577', true: item.color }}
-                                                    thumbColor={item.value ? '#fff' : '#f4f3f4'}
+                                                    thumbColor={(item.value as boolean) ? '#fff' : '#f4f3f4'}
                                                 />
                                             )}
                                             {item.type === 'link' && (
@@ -242,7 +235,7 @@ export default function SettingsScreen() {
                             end={{ x: 1, y: 1 }}
                         >
                             <IconSymbol name="arrow.right.square.fill" size={20} color="#fff" />
-                            <Text style={styles.logoutText}>Logout</Text>
+                            <Text style={styles.logoutText}>{t('settings.logout')}</Text>
                         </LinearGradient>
                     </TouchableOpacity>
                 </View>
@@ -250,23 +243,23 @@ export default function SettingsScreen() {
                 {/* Danger Zone */}
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: '#FF6B6B' }]}>
-                        Danger Zone
+                        {t('settings.dangerZone')}
                     </Text>
                     <TouchableOpacity
                         style={[styles.dangerButton, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}
                         activeOpacity={0.7}
                     >
                         <IconSymbol name="trash.fill" size={20} color="#FF6B6B" />
-                        <Text style={styles.dangerText}>Clear All Data</Text>
+                        <Text style={styles.dangerText}>{t('settings.clearAllData')}</Text>
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.footer}>
                     <Text style={[styles.footerText, { color: isDark ? '#666' : '#999' }]}>
-                        Bilagh - Road Damage Detector
+                        {t('settings.footerTitle')}
                     </Text>
                     <Text style={[styles.footerText, { color: isDark ? '#666' : '#999' }]}>
-                        © 2025 All Rights Reserved
+                        {t('settings.footerCopyright')}
                     </Text>
                 </View>
             </ScrollView>

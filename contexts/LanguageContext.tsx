@@ -98,6 +98,7 @@ export function useTranslation() {
     if (!context) {
         return {
             t: (key: string) => translate(key, 'en'),
+            locale: 'en',
             i18n: {
                 language: 'en',
                 changeLanguage: async () => { },
@@ -107,6 +108,7 @@ export function useTranslation() {
 
     return {
         t: context.t,
+        locale: context.language,
         i18n: {
             language: context.language,
             changeLanguage: context.changeLanguage,

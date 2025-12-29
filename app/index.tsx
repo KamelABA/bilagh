@@ -1,39 +1,20 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 export default function Index() {
     const router = useRouter();
-    const [isChecking, setIsChecking] = useState(true);
 
     useEffect(() => {
-        checkAuth();
+        // Small delay to show loading, then always go to login
+        const timeout = setTimeout(() => {
+            router.replace('/login');
+        }, 500);
+
+        return () => clearTimeout(timeout);
     }, []);
 
-    const checkAuth = async () => {
-        try {
-            // Small delay to show loading
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            const token = await AsyncStorage.getItem('userToken');
-
-            if (token) {
-                // User is logged in, go to home
-                router.replace('/(tabs)');
-            } else {
-                // No token, show login
-                router.replace('/login');
-            }
-        } catch (error) {
-            // On error, show login
-            router.replace('/login');
-        } finally {
-            setIsChecking(false);
-        }
-    };
-
-    // Show loading screen while checking
+    // Show loading screen while redirecting
     return (
         <View style={{
             flex: 1,

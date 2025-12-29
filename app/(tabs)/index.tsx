@@ -1,5 +1,6 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTranslation } from '@/hooks/useTranslation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -10,18 +11,19 @@ const { width } = Dimensions.get('window');
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const router = useRouter();
+  const { t } = useTranslation();
   const isDark = colorScheme === 'dark';
 
   const stats = [
-    { label: 'Reports', value: '127', icon: 'doc.text.fill', color: '#FF6B6B' },
-    { label: 'Fixed', value: '89', icon: 'checkmark.circle.fill', color: '#4ECDC4' },
-    { label: 'Pending', value: '38', icon: 'clock.fill', color: '#FFE66D' },
+    { label: t('home.reports'), value: '127', icon: 'doc.text.fill', color: '#FF6B6B' },
+    { label: t('home.fixed'), value: '89', icon: 'checkmark.circle.fill', color: '#4ECDC4' },
+    { label: t('home.pending'), value: '38', icon: 'clock.fill', color: '#FFE66D' },
   ];
 
   const quickActions = [
-    { label: 'Report Damage', icon: 'camera.fill', route: '/camera', gradient: ['#0B5394', '#075A9E'] },
-    { label: 'View Map', icon: 'map.fill', route: '/map', gradient: ['#4A7C2C', '#2D5016'] },
-    { label: 'My Reports', icon: 'list.bullet', route: '/complaint', gradient: ['#0B5394', '#4A7C2C'] },
+    { label: t('home.reportDamage'), icon: 'camera.fill', route: '/camera', gradient: ['#0B5394', '#075A9E'] },
+    { label: t('home.viewMap'), icon: 'map.fill', route: '/map', gradient: ['#4A7C2C', '#2D5016'] },
+    { label: t('home.myReports'), icon: 'list.bullet', route: '/complaint', gradient: ['#0B5394', '#4A7C2C'] },
   ];
 
   return (
@@ -37,9 +39,9 @@ export default function HomeScreen() {
               <IconSymbol name="mappin.circle.fill" size={40} color="#fff" />
             </View>
             <View>
-              <Text style={styles.greeting}>Welcome to</Text>
-              <Text style={styles.appName}>Bilagh</Text>
-              <Text style={styles.subtitle}>Road Damage Detector</Text>
+              <Text style={styles.greeting}>{t('home.welcomeTo')}</Text>
+              <Text style={styles.appName}>{t('common.appName')}</Text>
+              <Text style={styles.subtitle}>{t('common.tagline')}</Text>
             </View>
           </View>
           <View style={styles.logoContainer}>
@@ -74,7 +76,7 @@ export default function HomeScreen() {
       {/* Quick Actions */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#000' }]}>
-          Quick Actions
+          {t('home.quickActions')}
         </Text>
         <View style={styles.actionsContainer}>
           {quickActions.map((action, index) => (
@@ -100,7 +102,7 @@ export default function HomeScreen() {
       {/* Recent Activity */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#000' }]}>
-          Recent Activity
+          {t('home.recentActivity')}
         </Text>
         <View style={[styles.activityCard, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
           <View style={styles.activityItem}>
@@ -109,10 +111,10 @@ export default function HomeScreen() {
             </View>
             <View style={styles.activityContent}>
               <Text style={[styles.activityTitle, { color: isDark ? '#fff' : '#000' }]}>
-                Pothole Reported
+                {t('home.potholeReported')}
               </Text>
               <Text style={[styles.activityTime, { color: isDark ? '#999' : '#666' }]}>
-                2 hours ago • Main Street
+                2 {t('home.hoursAgo')} • {t('home.mainStreet')}
               </Text>
             </View>
           </View>
@@ -122,10 +124,10 @@ export default function HomeScreen() {
             </View>
             <View style={styles.activityContent}>
               <Text style={[styles.activityTitle, { color: isDark ? '#fff' : '#000' }]}>
-                Issue Resolved
+                {t('home.issueResolved')}
               </Text>
               <Text style={[styles.activityTime, { color: isDark ? '#999' : '#666' }]}>
-                1 day ago • Oak Avenue
+                1 {t('home.dayAgo')} • {t('home.oakAvenue')}
               </Text>
             </View>
           </View>

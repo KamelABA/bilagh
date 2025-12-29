@@ -1,5 +1,6 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTranslation } from '@/hooks/useTranslation';
 import React, { useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -12,11 +13,12 @@ interface DamageReport {
     type: string;
     severity: 'low' | 'medium' | 'high';
     status: 'pending' | 'in-progress' | 'resolved';
-    description: string;
+    descriptionKey: string;
 }
 
 export default function MapScreen() {
     const colorScheme = useColorScheme();
+    const { t } = useTranslation();
     const isDark = colorScheme === 'dark';
 
     const [selectedReport, setSelectedReport] = useState<DamageReport | null>(null);
@@ -27,28 +29,28 @@ export default function MapScreen() {
             id: 1,
             latitude: 37.78825,
             longitude: -122.4324,
-            type: 'Pothole',
+            type: t('reports.pothole'),
             severity: 'high',
             status: 'pending',
-            description: 'Large pothole on main road',
+            descriptionKey: 'map.largePotholeOnMainRoad',
         },
         {
             id: 2,
             latitude: 37.78925,
             longitude: -122.4314,
-            type: 'Crack',
+            type: t('reports.crack'),
             severity: 'medium',
             status: 'in-progress',
-            description: 'Road surface crack',
+            descriptionKey: 'map.roadSurfaceCrack',
         },
         {
             id: 3,
             latitude: 37.78725,
             longitude: -122.4344,
-            type: 'Pothole',
+            type: t('reports.pothole'),
             severity: 'low',
             status: 'resolved',
-            description: 'Small pothole',
+            descriptionKey: 'map.smallPothole',
         },
     ];
 
@@ -78,6 +80,32 @@ export default function MapScreen() {
         }
     };
 
+    const getStatusLabel = (status: string) => {
+        switch (status) {
+            case 'pending':
+                return t('reports.pending');
+            case 'in-progress':
+                return t('reports.inProgress');
+            case 'resolved':
+                return t('reports.resolved');
+            default:
+                return status;
+        }
+    };
+
+    const getSeverityLabel = (severity: string) => {
+        switch (severity) {
+            case 'high':
+                return t('map.high');
+            case 'medium':
+                return t('map.medium');
+            case 'low':
+                return t('map.low');
+            default:
+                return severity;
+        }
+    };
+
     return (
         <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
             {/* Web Map Placeholder */}
@@ -85,13 +113,13 @@ export default function MapScreen() {
                 <View style={styles.placeholderContent}>
                     <IconSymbol name="map.fill" size={64} color={isDark ? '#667eea' : '#764ba2'} />
                     <Text style={[styles.placeholderTitle, { color: isDark ? '#fff' : '#000' }]}>
-                        Map View (Web Preview)
+                        {t('map.mapViewWebPreview')}
                     </Text>
                     <Text style={[styles.placeholderText, { color: isDark ? '#999' : '#666' }]}>
-                        Interactive map is available on mobile devices
+                        {t('map.interactiveMapAvailable')}
                     </Text>
                     <Text style={[styles.placeholderSubtext, { color: isDark ? '#666' : '#999' }]}>
-                        Use the Expo Go app on iOS or Android to view the full map experience
+                        {t('map.useExpoGoApp')}
                     </Text>
                 </View>
             </View>
@@ -99,20 +127,20 @@ export default function MapScreen() {
             {/* Header */}
             <View style={[styles.header, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                 <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#000' }]}>
-                    Road Damage Map
+                    {t('map.roadDamageMap')}
                 </Text>
                 <View style={styles.legendContainer}>
                     <View style={styles.legendItem}>
                         <View style={[styles.legendDot, { backgroundColor: '#FF6B6B' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>High</Text>
+                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.high')}</Text>
                     </View>
                     <View style={styles.legendItem}>
                         <View style={[styles.legendDot, { backgroundColor: '#FFE66D' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>Medium</Text>
+                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.medium')}</Text>
                     </View>
                     <View style={styles.legendItem}>
                         <View style={[styles.legendDot, { backgroundColor: '#4ECDC4' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>Low</Text>
+                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.low')}</Text>
                     </View>
                 </View>
             </View>
@@ -121,7 +149,7 @@ export default function MapScreen() {
             <ScrollView style={styles.webScrollView}>
                 <View style={[styles.reportsList, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                     <Text style={[styles.reportsTitle, { color: isDark ? '#fff' : '#000' }]}>
-                        Damage Reports
+                        {t('map.damageReports')}
                     </Text>
                     {damageReports.map((report) => (
                         <TouchableOpacity
@@ -146,7 +174,7 @@ export default function MapScreen() {
                                     {report.type}
                                 </Text>
                                 <Text style={[styles.reportDescription, { color: isDark ? '#999' : '#666' }]}>
-                                    {report.description}
+                                    {t(report.descriptionKey)}
                                 </Text>
                             </View>
                             <View
@@ -161,7 +189,7 @@ export default function MapScreen() {
                                         { color: getStatusColor(report.status) },
                                     ]}
                                 >
-                                    {report.status.toUpperCase()}
+                                    {getStatusLabel(report.status).toUpperCase()}
                                 </Text>
                             </View>
                         </TouchableOpacity>
@@ -178,7 +206,7 @@ export default function MapScreen() {
                                 {selectedReport.type}
                             </Text>
                             <Text style={[styles.reportDescriptionDetail, { color: isDark ? '#999' : '#666' }]}>
-                                {selectedReport.description}
+                                {t(selectedReport.descriptionKey)}
                             </Text>
                         </View>
                         <TouchableOpacity onPress={() => setSelectedReport(null)}>
@@ -188,7 +216,7 @@ export default function MapScreen() {
                     <View style={styles.reportDetails}>
                         <View style={styles.detailItem}>
                             <Text style={[styles.detailLabel, { color: isDark ? '#999' : '#666' }]}>
-                                Severity
+                                {t('reports.severity')}
                             </Text>
                             <View
                                 style={[
@@ -202,13 +230,13 @@ export default function MapScreen() {
                                         { color: getSeverityColor(selectedReport.severity) },
                                     ]}
                                 >
-                                    {selectedReport.severity.toUpperCase()}
+                                    {getSeverityLabel(selectedReport.severity).toUpperCase()}
                                 </Text>
                             </View>
                         </View>
                         <View style={styles.detailItem}>
                             <Text style={[styles.detailLabel, { color: isDark ? '#999' : '#666' }]}>
-                                Status
+                                {t('reports.status')}
                             </Text>
                             <View
                                 style={[
@@ -222,7 +250,7 @@ export default function MapScreen() {
                                         { color: getStatusColor(selectedReport.status) },
                                     ]}
                                 >
-                                    {selectedReport.status.toUpperCase()}
+                                    {getStatusLabel(selectedReport.status).toUpperCase()}
                                 </Text>
                             </View>
                         </View>

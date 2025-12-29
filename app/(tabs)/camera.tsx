@@ -1,5 +1,6 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTranslation } from '@/hooks/useTranslation';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +21,7 @@ const { width, height } = Dimensions.get('window');
 export default function CameraScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
+    const { t } = useTranslation();
     const isDark = colorScheme === 'dark';
     const [facing, setFacing] = useState<CameraType>('back');
     const [permission, requestPermission] = useCameraPermissions();
@@ -36,10 +38,10 @@ export default function CameraScreen() {
                 <View style={styles.permissionContainer}>
                     <IconSymbol name="camera.fill" size={64} color={isDark ? '#667eea' : '#764ba2'} />
                     <Text style={[styles.permissionTitle, { color: isDark ? '#fff' : '#000' }]}>
-                        Camera Permission Required
+                        {t('camera.cameraPermissionRequired')}
                     </Text>
                     <Text style={[styles.permissionText, { color: isDark ? '#999' : '#666' }]}>
-                        We need your permission to access the camera to report road damage
+                        {t('camera.cameraPermissionText')}
                     </Text>
                     <TouchableOpacity onPress={requestPermission}>
                         <LinearGradient
@@ -48,7 +50,7 @@ export default function CameraScreen() {
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                         >
-                            <Text style={styles.permissionButtonText}>Grant Permission</Text>
+                            <Text style={styles.permissionButtonText}>{t('camera.grantPermission')}</Text>
                         </LinearGradient>
                     </TouchableOpacity>
                 </View>
@@ -64,7 +66,7 @@ export default function CameraScreen() {
                     setCapturedImage(photo.uri);
                 }
             } catch (error) {
-                Alert.alert('Error', 'Failed to take picture');
+                Alert.alert(t('common.error'), t('camera.failedToTakePicture'));
             }
         }
     };
@@ -110,7 +112,7 @@ export default function CameraScreen() {
                             end={{ x: 1, y: 1 }}
                         >
                             <IconSymbol name="arrow.counterclockwise" size={24} color="#fff" />
-                            <Text style={styles.controlButtonText}>Retake</Text>
+                            <Text style={styles.controlButtonText}>{t('camera.retake')}</Text>
                         </LinearGradient>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={submitReport} style={styles.controlButton}>
@@ -121,7 +123,7 @@ export default function CameraScreen() {
                             end={{ x: 1, y: 1 }}
                         >
                             <IconSymbol name="checkmark.circle.fill" size={24} color="#fff" />
-                            <Text style={styles.controlButtonText}>Submit</Text>
+                            <Text style={styles.controlButtonText}>{t('camera.submit')}</Text>
                         </LinearGradient>
                     </TouchableOpacity>
                 </View>
@@ -134,7 +136,7 @@ export default function CameraScreen() {
             <CameraView style={styles.camera} facing={facing} ref={cameraRef}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.headerText}>Report Road Damage</Text>
+                    <Text style={styles.headerText}>{t('camera.reportRoadDamage')}</Text>
                 </View>
 
                 {/* Camera Controls */}
@@ -164,7 +166,7 @@ export default function CameraScreen() {
                     >
                         <IconSymbol name="lightbulb.fill" size={20} color="#FFE66D" />
                         <Text style={styles.tipText}>
-                            Capture clear photos of road damage for better reporting
+                            {t('camera.cameraTip')}
                         </Text>
                     </LinearGradient>
                 </View>
