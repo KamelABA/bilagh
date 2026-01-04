@@ -36,7 +36,7 @@ class ReportBase(BaseModel):
     severity: SeverityLevel = SeverityLevel.MEDIUM
 
 class ReportCreate(ReportBase):
-    pass
+    image_url: Optional[str] = None
 
 class ReportUpdate(BaseModel):
     status: Optional[ReportStatus] = None
@@ -53,6 +53,28 @@ class Report(ReportBase):
     class Config:
         from_attributes = True
 
+# Report with User info for agents
+class UserInfo(BaseModel):
+    id: int
+    full_name: Optional[str] = None
+    email: str
+    phone: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ReportWithUser(ReportBase):
+    id: int
+    user_id: int
+    status: ReportStatus
+    image_url: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    user: UserInfo
+
+    class Config:
+        from_attributes = True
+
 # Token Schemas
 class Token(BaseModel):
     access_token: str
@@ -60,3 +82,17 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+# Notification Schemas
+class Notification(BaseModel):
+    id: int
+    user_id: int
+    title: str
+    message: str
+    type: str
+    report_id: Optional[int] = None
+    is_read: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

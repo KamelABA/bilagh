@@ -52,10 +52,35 @@ export default function LoginScreen() {
             const data = await response.json();
 
             if (response.ok) {
-                // Save token and navigate
+                // Save token
                 await AsyncStorage.setItem('userToken', data.access_token);
                 await AsyncStorage.setItem('userEmail', email);
-                router.replace('/(tabs)');
+
+                // Fetch user profile to check role
+                const userResponse = await fetch(API_ENDPOINTS.ME, {
+                    headers: {
+                        'Authorization': `Bearer ${data.access_token}`,
+                    },
+                });
+
+                if (userResponse.ok) {
+                    const userData = await userResponse.json();
+                    await AsyncStorage.setItem('userRole', userData.role || 'user');
+                    await AsyncStorage.setItem('userName', userData.full_name || userData.username || '');
+                    await AsyncStorage.setItem('userEmail', userData.email || '');
+
+                    // Redirect based on role
+                    if (userData.role === 'agent') {
+                        router.replace('/(agent)');
+                    } else if (userData.role === 'municipal') {
+                        router.replace('/(municipal)');
+                    } else {
+                        router.replace('/(tabs)');
+                    }
+                } else {
+                    // Default to regular user tabs if profile fetch fails
+                    router.replace('/(tabs)');
+                }
             } else {
                 Alert.alert(t('common.error'), data.detail || t('auth.loginFailed'));
             }

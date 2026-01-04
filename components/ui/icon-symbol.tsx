@@ -16,19 +16,26 @@ type IconSymbolName = keyof typeof MAPPING;
 const MAPPING = {
   // Navigation
   'house.fill': 'home',
+  'house': 'home',
   'map.fill': 'map',
+  'map': 'map',
   'camera.fill': 'camera-alt',
   'exclamationmark.triangle.fill': 'warning',
   'person.fill': 'person',
+  'person': 'person',
   'mappin.circle.fill': 'place',
 
   // Actions
   'bell.fill': 'notifications',
+  'bell': 'notifications',
   'plus': 'add',
   'plus.circle.fill': 'add-circle',
   'xmark.circle.fill': 'cancel',
   'checkmark.circle.fill': 'check-circle',
+  'checkmark.shield.fill': 'verified-user',
+  'checkmark.shield': 'verified-user',
   'arrow.right.square.fill': 'logout',
+  'rectangle.portrait.and.arrow.right': 'logout',
 
   // Info
   'doc.text.fill': 'description',
@@ -37,6 +44,8 @@ const MAPPING = {
   'location.fill': 'location-on',
   'info.circle.fill': 'info',
   'questionmark.circle.fill': 'help',
+  'questionmark.circle': 'help-outline',
+  'calendar': 'calendar-today',
 
   // Settings
   'lock.fill': 'lock',
@@ -48,6 +57,7 @@ const MAPPING = {
   'gear': 'settings',
   'envelope.fill': 'email',
   'phone.fill': 'phone',
+  'building.2.fill': 'business',
 
   // Other
   'paperplane.fill': 'send',
@@ -59,6 +69,9 @@ const MAPPING = {
   'internaldrive.fill': 'storage',
   'shield.fill': 'shield',
   'trash.fill': 'delete',
+  'camera.rotate.fill': 'flip-camera-ios',
+  'xmark': 'close',
+  'xmark.circle': 'cancel',
 } as IconMapping;
 
 /**

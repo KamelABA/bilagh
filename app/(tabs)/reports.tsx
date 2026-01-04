@@ -1,11 +1,21 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { API_ENDPOINTS } from '@/constants/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTranslation } from '@/hooks/useTranslation';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
     Image,
+    Modal,
+    Platform,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
@@ -14,6 +24,39 @@ import {
     View
 } from 'react-native';
 
+const { width } = Dimensions.get('window');
+
+// Damage types
+const DAMAGE_TYPES = [
+    { id: 'pothole', labelKey: 'reports.pothole' },
+    { id: 'crack', labelKey: 'reports.crack' },
+    { id: 'debris', labelKey: 'reports.debris' },
+];
+
+// Severity levels
+const SEVERITY_LEVELS = [
+    { id: 'low', labelKey: 'reports.low', color: '#4ECDC4' },
+    { id: 'medium', labelKey: 'reports.medium', color: '#FFD200' },
+    { id: 'high', labelKey: 'reports.high', color: '#FF4B2B' },
+];
+
+interface FormErrors {
+    type?: string;
+    location?: string;
+    description?: string;
+}
+
+interface Report {
+    id: number;
+    type: string;
+    location: string;
+    description: string | null;
+    severity: string;
+    status: string;
+    created_at: string;
+    image_url: string | null;
+}
+
 export default function ReportsScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
@@ -21,41 +64,344 @@ export default function ReportsScreen() {
     const isDark = colorScheme === 'dark';
     const [activeTab, setActiveTab] = useState<'submit' | 'reports'>('submit');
     const [selectedFilter, setSelectedFilter] = useState('all');
-    const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
 
-    // Listen for photo from camera
-    useEffect(() => {
-        const photoUri = (global as any).capturedPhotoUri;
-        if (photoUri) {
-            setCapturedPhoto(photoUri);
-            (global as any).capturedPhotoUri = null;
+    // Form state
+    const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+    const [damageType, setDamageType] = useState<string>('');
+    const [location, setLocation] = useState<string>('');
+    const [latitude, setLatitude] = useState<number | null>(null);
+    const [longitude, setLongitude] = useState<number | null>(null);
+    const [description, setDescription] = useState<string>('');
+    const [severity, setSeverity] = useState<string>('medium');
+    const [formErrors, setFormErrors] = useState<FormErrors>({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Location picker state
+    const [showLocationPicker, setShowLocationPicker] = useState(false);
+    const [isGettingLocation, setIsGettingLocation] = useState(false);
+
+    // Reports list state
+    const [reports, setReports] = useState<Report[]>([]);
+    const [loadingReports, setLoadingReports] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    // Type selector modal
+    const [showTypeSelector, setShowTypeSelector] = useState(false);
+
+    // Listen for photo and prediction from camera - use useFocusEffect to capture on every navigation
+    useFocusEffect(
+        useCallback(() => {
+            const photoUri = (global as any).capturedPhotoUri;
+            const prediction = (global as any).predictionResult;
+
+            if (photoUri) {
+                console.log('Captured photo from camera:', photoUri);
+                setCapturedPhoto(photoUri);
+                (global as any).capturedPhotoUri = null;
+            }
+
+            if (prediction && prediction.detected) {
+                console.log('Prediction from camera:', prediction);
+                // Auto-fill from AI prediction
+                if (prediction.damage_label) {
+                    const typeMap: { [key: string]: string } = {
+                        'Pothole': 'pothole',
+                        'Crack': 'crack',
+                        'Road Debris': 'debris',
+                        'Debris': 'debris',
+                        'Alligator Crack': 'crack',
+                        'Longitudinal Crack': 'crack',
+                        'Transverse Crack': 'crack',
+                    };
+                    setDamageType(typeMap[prediction.damage_label] || 'pothole');
+                }
+                if (prediction.severity) {
+                    setSeverity(prediction.severity);
+                }
+                (global as any).predictionResult = null;
+            }
+        }, [])
+    );
+
+    // Fetch user reports
+    const fetchReports = useCallback(async () => {
+        setLoadingReports(true);
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) return;
+
+            const response = await fetch(API_ENDPOINTS.REPORTS, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setReports(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch reports:', error);
+        } finally {
+            setLoadingReports(false);
+            setRefreshing(false);
         }
     }, []);
 
-    // Mock data
-    const reports = [
-        { id: 1, type: t('reports.pothole'), location: 'Main St', status: 'pending', date: '2h ago' },
-        { id: 2, type: t('reports.crack'), location: 'Oak Ave', status: 'pending', date: '1d ago' },
-    ];
+    useEffect(() => {
+        if (activeTab === 'reports') {
+            fetchReports();
+        }
+    }, [activeTab, fetchReports]);
+
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchReports();
+    }, [fetchReports]);
+
+    // Get current location
+    const getCurrentLocation = async () => {
+        setIsGettingLocation(true);
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert(t('common.error'), t('reports.locationPermissionRequired'));
+                return;
+            }
+
+            const locationResult = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.High,
+            });
+
+            setLatitude(locationResult.coords.latitude);
+            setLongitude(locationResult.coords.longitude);
+
+            // Reverse geocode to get address
+            const [address] = await Location.reverseGeocodeAsync({
+                latitude: locationResult.coords.latitude,
+                longitude: locationResult.coords.longitude,
+            });
+
+            if (address) {
+                const addressParts = [
+                    address.street,
+                    address.city,
+                    address.region,
+                ].filter(Boolean);
+                setLocation(addressParts.join(', ') || `${locationResult.coords.latitude.toFixed(6)}, ${locationResult.coords.longitude.toFixed(6)}`);
+            }
+
+            setFormErrors(prev => ({ ...prev, location: undefined }));
+        } catch (error) {
+            console.error('Location error:', error);
+            Alert.alert(t('common.error'), t('reports.locationFailed'));
+        } finally {
+            setIsGettingLocation(false);
+        }
+    };
+
+    // Validate form
+    const validateForm = (): boolean => {
+        const errors: FormErrors = {};
+
+        if (!damageType) {
+            errors.type = t('reports.typeRequired');
+        }
+
+        if (!location.trim()) {
+            errors.location = t('reports.locationRequired');
+        }
+
+        if (!description.trim()) {
+            errors.description = t('reports.descriptionRequired');
+        }
+
+        console.log('Form validation errors:', errors);
+        console.log('Form data:', { damageType, location, description, severity });
+
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    // Submit report
+    const handleSubmit = async () => {
+        console.log('Submit button pressed');
+
+        if (!validateForm()) {
+            console.log('Validation failed');
+            // Scroll to top to show errors
+            if (Platform.OS === 'web') {
+                window.alert(t('reports.pleaseFixErrors'));
+            } else {
+                Alert.alert(t('common.error'), t('reports.pleaseFixErrors'));
+            }
+            return;
+        }
+
+        console.log('Validation passed, submitting...');
+        setIsSubmitting(true);
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                Alert.alert(t('common.error'), t('auth.loginRequired'));
+                router.replace('/login');
+                return;
+            }
+
+            let imageUrl = null;
+
+            // Upload photo to Cloudinary if we have one
+            if (capturedPhoto) {
+                console.log('Uploading photo to Cloudinary...');
+                try {
+                    // Create form data for image upload
+                    const formData = new FormData();
+                    const filename = capturedPhoto.split('/').pop() || 'photo.jpg';
+                    const match = /\.(\w+)$/.exec(filename);
+                    const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+                    formData.append('file', {
+                        uri: capturedPhoto,
+                        name: filename,
+                        type: type,
+                    } as any);
+
+                    const uploadResponse = await fetch(API_ENDPOINTS.UPLOAD_IMAGE, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                        },
+                        body: formData,
+                    });
+
+                    if (uploadResponse.ok) {
+                        const uploadResult = await uploadResponse.json();
+                        imageUrl = uploadResult.url;
+                        console.log('Photo uploaded:', imageUrl);
+                    } else {
+                        console.error('Photo upload failed:', await uploadResponse.text());
+                    }
+                } catch (uploadError) {
+                    console.error('Photo upload error:', uploadError);
+                    // Continue without image if upload fails
+                }
+            }
+
+            const reportData = {
+                type: damageType,
+                location: location,
+                latitude: latitude,
+                longitude: longitude,
+                description: description,
+                severity: severity,
+                image_url: imageUrl,
+            };
+
+            console.log('Sending report data:', reportData);
+            console.log('API URL:', API_ENDPOINTS.REPORTS);
+
+            const response = await fetch(API_ENDPOINTS.REPORTS, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(reportData),
+            });
+
+            console.log('Response status:', response.status);
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('Report created:', result);
+
+                // Reset form
+                setCapturedPhoto(null);
+                setDamageType('');
+                setLocation('');
+                setLatitude(null);
+                setLongitude(null);
+                setDescription('');
+                setSeverity('medium');
+                setFormErrors({});
+
+                if (Platform.OS === 'web') {
+                    window.alert(t('reports.submitSuccess'));
+                    // Switch to reports tab
+                    setActiveTab('reports');
+                    fetchReports();
+                } else {
+                    Alert.alert(
+                        t('common.success'),
+                        t('reports.submitSuccess'),
+                        [
+                            {
+                                text: t('common.done'),
+                                onPress: () => {
+                                    // Switch to reports tab
+                                    setActiveTab('reports');
+                                    fetchReports();
+                                },
+                            },
+                        ]
+                    );
+                }
+            } else {
+                const errorData = await response.json();
+                console.error('API Error:', errorData);
+                if (Platform.OS === 'web') {
+                    window.alert(errorData.detail || t('reports.submitFailed'));
+                } else {
+                    Alert.alert(t('common.error'), errorData.detail || t('reports.submitFailed'));
+                }
+            }
+        } catch (error) {
+            console.error('Submit error:', error);
+            if (Platform.OS === 'web') {
+                window.alert(t('reports.submitFailed'));
+            } else {
+                Alert.alert(t('common.error'), t('reports.submitFailed'));
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const getFilterLabel = (filter: string) => {
+        switch (filter) {
+            case 'all': return t('reports.all');
+            case 'pending': return t('reports.pending');
+            case 'in-progress': return t('reports.inProgress');
+            case 'resolved': return t('reports.resolved');
+            default: return filter;
+        }
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'pending': return '#FF6B6B';
+            case 'in-progress': return '#FFD200';
+            case 'resolved': return '#4ECDC4';
+            default: return '#999';
+        }
+    };
+
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffHours < 1) return t('reports.justNow');
+        if (diffHours < 24) return `${diffHours}h ${t('reports.ago')}`;
+        if (diffDays < 7) return `${diffDays}d ${t('reports.ago')}`;
+        return date.toLocaleDateString();
+    };
 
     const filteredReports = selectedFilter === 'all'
         ? reports
         : reports.filter(r => r.status === selectedFilter);
-
-    const getFilterLabel = (filter: string) => {
-        switch (filter) {
-            case 'all':
-                return t('reports.all');
-            case 'pending':
-                return t('reports.pending');
-            case 'in-progress':
-                return t('reports.inProgress');
-            case 'resolved':
-                return t('reports.resolved');
-            default:
-                return filter.charAt(0).toUpperCase() + filter.slice(1);
-        }
-    };
 
     return (
         <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
@@ -74,34 +420,18 @@ export default function ReportsScreen() {
                     <TouchableOpacity
                         onPress={() => setActiveTab('submit')}
                         activeOpacity={0.7}
-                        style={[
-                            styles.tab,
-                            activeTab === 'submit' && styles.activeTab,
-                        ]}
+                        style={[styles.tab, activeTab === 'submit' && styles.activeTab]}
                     >
-                        <Text
-                            style={[
-                                styles.tabText,
-                                { color: activeTab === 'submit' ? '#0B5394' : '#fff' },
-                            ]}
-                        >
+                        <Text style={[styles.tabText, { color: activeTab === 'submit' ? '#0B5394' : '#fff' }]}>
                             {t('reports.submit')}
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => setActiveTab('reports')}
                         activeOpacity={0.7}
-                        style={[
-                            styles.tab,
-                            activeTab === 'reports' && styles.activeTab,
-                        ]}
+                        style={[styles.tab, activeTab === 'reports' && styles.activeTab]}
                     >
-                        <Text
-                            style={[
-                                styles.tabText,
-                                { color: activeTab === 'reports' ? '#0B5394' : '#fff' },
-                            ]}
-                        >
+                        <Text style={[styles.tabText, { color: activeTab === 'reports' ? '#0B5394' : '#fff' }]}>
                             {t('reports.myReports')}
                         </Text>
                     </TouchableOpacity>
@@ -110,42 +440,147 @@ export default function ReportsScreen() {
 
             {activeTab === 'submit' ? (
                 // Submit Form
-                <ScrollView style={styles.content}>
+                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                    {/* Damage Type */}
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.type')}</Text>
-                        <View style={[styles.input, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
-                            <TextInput
-                                placeholder={t('reports.selectType')}
-                                placeholderTextColor={isDark ? '#666' : '#999'}
-                                style={{ color: isDark ? '#fff' : '#000', flex: 1 }}
-                            />
-                        </View>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
+                            {t('reports.type')} <Text style={styles.required}>*</Text>
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => setShowTypeSelector(true)}
+                            style={[
+                                styles.input,
+                                { backgroundColor: isDark ? '#1a1a1a' : '#fff' },
+                                formErrors.type && styles.inputError
+                            ]}
+                        >
+                            <IconSymbol name="exclamationmark.triangle.fill" size={20} color="#0B5394" />
+                            <Text style={[
+                                styles.inputText,
+                                { color: damageType ? (isDark ? '#fff' : '#000') : (isDark ? '#666' : '#999') }
+                            ]}>
+                                {damageType ? t(`reports.${damageType}`) : t('reports.selectType')}
+                            </Text>
+                            <IconSymbol name="chevron.right" size={16} color={isDark ? '#666' : '#999'} />
+                        </TouchableOpacity>
+                        {formErrors.type && <Text style={styles.errorText}>{formErrors.type}</Text>}
                     </View>
+
+                    {/* Location */}
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.location')}</Text>
-                        <View style={[styles.input, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
+                            {t('reports.location')} <Text style={styles.required}>*</Text>
+                        </Text>
+                        <View style={[
+                            styles.input,
+                            { backgroundColor: isDark ? '#1a1a1a' : '#fff' },
+                            formErrors.location && styles.inputError
+                        ]}>
                             <IconSymbol name="location.fill" size={20} color="#0B5394" />
                             <TextInput
                                 placeholder={t('reports.enterLocation')}
                                 placeholderTextColor={isDark ? '#666' : '#999'}
-                                style={{ color: isDark ? '#fff' : '#000', flex: 1, marginLeft: 8 }}
+                                style={[styles.textInput, { color: isDark ? '#fff' : '#000' }]}
+                                value={location}
+                                onChangeText={(text) => {
+                                    setLocation(text);
+                                    if (text.trim()) setFormErrors(prev => ({ ...prev, location: undefined }));
+                                }}
                             />
                         </View>
+                        {formErrors.location && <Text style={styles.errorText}>{formErrors.location}</Text>}
+
+                        {/* Location Buttons */}
+                        <View style={styles.locationButtons}>
+                            <TouchableOpacity
+                                style={[styles.locationButton, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}
+                                onPress={getCurrentLocation}
+                                disabled={isGettingLocation}
+                            >
+                                {isGettingLocation ? (
+                                    <ActivityIndicator size="small" color="#0B5394" />
+                                ) : (
+                                    <IconSymbol name="location.fill" size={16} color="#0B5394" />
+                                )}
+                                <Text style={[styles.locationButtonText, { color: '#0B5394' }]}>
+                                    {t('reports.useCurrentLocation')}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {latitude && longitude && (
+                            <View style={[styles.coordsBox, { backgroundColor: isDark ? '#1a1a1a' : '#e8f4f8' }]}>
+                                <IconSymbol name="mappin.circle.fill" size={16} color="#4ECDC4" />
+                                <Text style={[styles.coordsText, { color: isDark ? '#999' : '#666' }]}>
+                                    {latitude.toFixed(6)}, {longitude.toFixed(6)}
+                                </Text>
+                            </View>
+                        )}
                     </View>
+
+                    {/* Description */}
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.description')}</Text>
-                        <View style={[styles.textArea, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
+                            {t('reports.description')} <Text style={styles.required}>*</Text>
+                        </Text>
+                        <View style={[
+                            styles.textArea,
+                            { backgroundColor: isDark ? '#1a1a1a' : '#fff' },
+                            formErrors.description && styles.inputError
+                        ]}>
                             <TextInput
                                 placeholder={t('reports.enterDescription')}
                                 placeholderTextColor={isDark ? '#666' : '#999'}
-                                style={{ color: isDark ? '#fff' : '#000' }}
+                                style={[styles.textAreaInput, { color: isDark ? '#fff' : '#000' }]}
                                 multiline
                                 numberOfLines={4}
+                                value={description}
+                                onChangeText={(text) => {
+                                    setDescription(text);
+                                    if (text.trim()) setFormErrors(prev => ({ ...prev, description: undefined }));
+                                }}
                             />
                         </View>
+                        {formErrors.description && <Text style={styles.errorText}>{formErrors.description}</Text>}
                     </View>
+
+                    {/* Severity */}
                     <View style={styles.section}>
-                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>{t('reports.photo')}</Text>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
+                            {t('reports.severity')}
+                        </Text>
+                        <View style={styles.severityContainer}>
+                            {SEVERITY_LEVELS.map((level) => (
+                                <TouchableOpacity
+                                    key={level.id}
+                                    onPress={() => setSeverity(level.id)}
+                                    style={[
+                                        styles.severityOption,
+                                        {
+                                            backgroundColor: severity === level.id
+                                                ? level.color + '20'
+                                                : (isDark ? '#1a1a1a' : '#fff'),
+                                            borderColor: severity === level.id ? level.color : 'transparent',
+                                        }
+                                    ]}
+                                >
+                                    <View style={[styles.severityDot, { backgroundColor: level.color }]} />
+                                    <Text style={[
+                                        styles.severityText,
+                                        { color: severity === level.id ? level.color : (isDark ? '#999' : '#666') }
+                                    ]}>
+                                        {t(level.labelKey)}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    {/* Photo */}
+                    <View style={styles.section}>
+                        <Text style={[styles.label, { color: isDark ? '#fff' : '#000' }]}>
+                            {t('reports.photo')}
+                        </Text>
                         <TouchableOpacity
                             onPress={() => router.push('/camera')}
                             activeOpacity={0.7}
@@ -153,10 +588,7 @@ export default function ReportsScreen() {
                             <View style={[styles.photoUpload, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
                                 {capturedPhoto ? (
                                     <View style={styles.photoPreview}>
-                                        <Image
-                                            source={{ uri: capturedPhoto }}
-                                            style={styles.previewImage}
-                                        />
+                                        <Image source={{ uri: capturedPhoto }} style={styles.previewImage} />
                                         <TouchableOpacity
                                             style={styles.changePhotoButton}
                                             onPress={() => router.push('/camera')}
@@ -176,17 +608,31 @@ export default function ReportsScreen() {
                             </View>
                         </TouchableOpacity>
                     </View>
-                    <TouchableOpacity activeOpacity={0.8}>
+
+                    {/* Submit Button */}
+                    <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={handleSubmit}
+                        disabled={isSubmitting}
+                    >
                         <LinearGradient
-                            colors={['#0B5394', '#4A7C2C']}
+                            colors={isSubmitting ? ['#999', '#777'] : ['#0B5394', '#4A7C2C']}
                             style={styles.submitButton}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                         >
-                            <IconSymbol name="checkmark.circle.fill" size={24} color="#fff" />
-                            <Text style={styles.submitText}>{t('reports.submitReport')}</Text>
+                            {isSubmitting ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <IconSymbol name="checkmark.circle.fill" size={24} color="#fff" />
+                            )}
+                            <Text style={styles.submitText}>
+                                {isSubmitting ? t('reports.submitting') : t('reports.submitReport')}
+                            </Text>
                         </LinearGradient>
                     </TouchableOpacity>
+
+                    <View style={{ height: 40 }} />
                 </ScrollView>
             ) : (
                 // Reports List
@@ -197,76 +643,158 @@ export default function ReportsScreen() {
                         style={styles.filters}
                         contentContainerStyle={{ paddingHorizontal: 20 }}
                     >
-                        {['all', 'pending'].map((filter) => (
+                        {['all', 'pending', 'in-progress', 'resolved'].map((filter) => (
                             <TouchableOpacity
                                 key={filter}
                                 onPress={() => setSelectedFilter(filter)}
                                 activeOpacity={0.7}
                             >
-                                <View
-                                    style={[
-                                        styles.filterChip,
+                                <View style={[
+                                    styles.filterChip,
+                                    {
+                                        backgroundColor: selectedFilter === filter
+                                            ? '#0B5394'
+                                            : isDark ? '#1a1a1a' : '#fff',
+                                    },
+                                ]}>
+                                    <Text style={[
+                                        styles.filterText,
                                         {
-                                            backgroundColor:
-                                                selectedFilter === filter
-                                                    ? '#0B5394'
-                                                    : isDark
-                                                        ? '#1a1a1a'
-                                                        : '#fff',
+                                            color: selectedFilter === filter
+                                                ? '#fff'
+                                                : isDark ? '#999' : '#666',
                                         },
-                                    ]}
-                                >
-                                    <Text
-                                        style={[
-                                            styles.filterText,
-                                            {
-                                                color:
-                                                    selectedFilter === filter
-                                                        ? '#fff'
-                                                        : isDark
-                                                            ? '#999'
-                                                            : '#666',
-                                            },
-                                        ]}
-                                    >
+                                    ]}>
                                         {getFilterLabel(filter)}
                                     </Text>
                                 </View>
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
-                    <ScrollView style={styles.list}>
-                        {filteredReports.map((report) => (
-                            <View
-                                key={report.id}
-                                style={[styles.reportCard, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}
-                            >
-                                <View style={styles.reportHeader}>
-                                    <Text style={[styles.reportType, { color: isDark ? '#fff' : '#000' }]}>
-                                        {report.type}
-                                    </Text>
-                                    <View style={[styles.statusBadge, { backgroundColor: '#FF6B6B20' }]}>
-                                        <Text style={[styles.statusText, { color: '#FF6B6B' }]}>
-                                            {t('reports.pending').toUpperCase()}
-                                        </Text>
-                                    </View>
-                                </View>
-                                <View style={styles.reportFooter}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <IconSymbol name="location.fill" size={14} color={isDark ? '#999' : '#666'} />
-                                        <Text style={[styles.reportLocation, { color: isDark ? '#999' : '#666' }]}>
-                                            {report.location}
-                                        </Text>
-                                    </View>
-                                    <Text style={[styles.reportDate, { color: isDark ? '#999' : '#666' }]}>
-                                        {report.date}
-                                    </Text>
-                                </View>
+
+                    <ScrollView
+                        style={styles.list}
+                        refreshControl={
+                            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0B5394']} />
+                        }
+                    >
+                        {loadingReports ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color="#0B5394" />
                             </View>
-                        ))}
+                        ) : filteredReports.length === 0 ? (
+                            <View style={[styles.emptyState, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
+                                <IconSymbol name="doc.text.fill" size={50} color={isDark ? '#666' : '#999'} />
+                                <Text style={[styles.emptyTitle, { color: isDark ? '#fff' : '#000' }]}>
+                                    {t('reports.noReports')}
+                                </Text>
+                                <Text style={[styles.emptyText, { color: isDark ? '#999' : '#666' }]}>
+                                    {t('reports.noReportsDesc')}
+                                </Text>
+                            </View>
+                        ) : (
+                            filteredReports.map((report) => (
+                                <View
+                                    key={report.id}
+                                    style={[styles.reportCard, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}
+                                >
+                                    {/* Image thumbnail if available */}
+                                    {report.image_url && (
+                                        <Image
+                                            source={{ uri: report.image_url }}
+                                            style={styles.reportImage}
+                                            resizeMode="cover"
+                                        />
+                                    )}
+                                    <View style={styles.reportHeader}>
+                                        <Text style={[styles.reportType, { color: isDark ? '#fff' : '#000' }]}>
+                                            {t(`reports.${report.type}`) || report.type}
+                                        </Text>
+                                        <View style={[
+                                            styles.statusBadge,
+                                            { backgroundColor: getStatusColor(report.status) + '20' }
+                                        ]}>
+                                            <Text style={[styles.statusText, { color: getStatusColor(report.status) }]}>
+                                                {getFilterLabel(report.status).toUpperCase()}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    {report.description && (
+                                        <Text
+                                            style={[styles.reportDescription, { color: isDark ? '#999' : '#666' }]}
+                                            numberOfLines={2}
+                                        >
+                                            {report.description}
+                                        </Text>
+                                    )}
+                                    <View style={styles.reportFooter}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                            <IconSymbol name="location.fill" size={14} color={isDark ? '#999' : '#666'} />
+                                            <Text
+                                                style={[styles.reportLocation, { color: isDark ? '#999' : '#666' }]}
+                                                numberOfLines={1}
+                                            >
+                                                {report.location}
+                                            </Text>
+                                        </View>
+                                        <Text style={[styles.reportDate, { color: isDark ? '#999' : '#666' }]}>
+                                            {formatDate(report.created_at)}
+                                        </Text>
+                                    </View>
+                                </View>
+                            ))
+                        )}
+                        <View style={{ height: 100 }} />
                     </ScrollView>
                 </>
             )}
+
+            {/* Type Selector Modal */}
+            <Modal
+                visible={showTypeSelector}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowTypeSelector(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
+                        <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#000' }]}>
+                            {t('reports.selectType')}
+                        </Text>
+                        {DAMAGE_TYPES.map((type) => (
+                            <TouchableOpacity
+                                key={type.id}
+                                style={[
+                                    styles.typeOption,
+                                    damageType === type.id && styles.typeOptionSelected,
+                                    { borderColor: damageType === type.id ? '#0B5394' : (isDark ? '#333' : '#eee') }
+                                ]}
+                                onPress={() => {
+                                    setDamageType(type.id);
+                                    setFormErrors(prev => ({ ...prev, type: undefined }));
+                                    setShowTypeSelector(false);
+                                }}
+                            >
+                                <Text style={[
+                                    styles.typeOptionText,
+                                    { color: damageType === type.id ? '#0B5394' : (isDark ? '#fff' : '#000') }
+                                ]}>
+                                    {t(type.labelKey)}
+                                </Text>
+                                {damageType === type.id && (
+                                    <IconSymbol name="checkmark.circle.fill" size={20} color="#0B5394" />
+                                )}
+                            </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                            style={styles.modalCancel}
+                            onPress={() => setShowTypeSelector(false)}
+                        >
+                            <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -323,6 +851,9 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 8,
     },
+    required: {
+        color: '#FF4B2B',
+    },
     input: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -333,6 +864,54 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 2,
+        gap: 10,
+    },
+    inputError: {
+        borderWidth: 1,
+        borderColor: '#FF4B2B',
+    },
+    inputText: {
+        flex: 1,
+        fontSize: 15,
+    },
+    textInput: {
+        flex: 1,
+        fontSize: 15,
+    },
+    errorText: {
+        color: '#FF4B2B',
+        fontSize: 12,
+        marginTop: 4,
+        marginLeft: 4,
+    },
+    locationButtons: {
+        flexDirection: 'row',
+        marginTop: 10,
+        gap: 10,
+    },
+    locationButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 6,
+    },
+    locationButtonText: {
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    coordsBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 10,
+        borderRadius: 8,
+        marginTop: 10,
+        gap: 8,
+    },
+    coordsText: {
+        fontSize: 12,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
     textArea: {
         padding: 16,
@@ -343,6 +922,33 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 2,
+    },
+    textAreaInput: {
+        fontSize: 15,
+        textAlignVertical: 'top',
+    },
+    severityContainer: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    severityOption: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 10,
+        borderWidth: 2,
+        gap: 6,
+    },
+    severityDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+    },
+    severityText: {
+        fontSize: 13,
+        fontWeight: '600',
     },
     photoUpload: {
         borderRadius: 12,
@@ -398,7 +1004,6 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         gap: 8,
         marginTop: 10,
-        marginBottom: 40,
     },
     submitText: {
         color: '#fff',
@@ -422,6 +1027,26 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingHorizontal: 20,
     },
+    loadingContainer: {
+        padding: 40,
+        alignItems: 'center',
+    },
+    emptyState: {
+        padding: 40,
+        borderRadius: 16,
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    emptyTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    emptyText: {
+        fontSize: 14,
+        textAlign: 'center',
+    },
     reportCard: {
         borderRadius: 16,
         padding: 16,
@@ -431,16 +1056,28 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 8,
         elevation: 3,
+        overflow: 'hidden',
+    },
+    reportImage: {
+        width: '100%',
+        height: 150,
+        borderRadius: 12,
+        marginBottom: 12,
     },
     reportHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 8,
     },
     reportType: {
         fontSize: 18,
         fontWeight: 'bold',
+    },
+    reportDescription: {
+        fontSize: 14,
+        marginBottom: 12,
+        lineHeight: 20,
     },
     statusBadge: {
         paddingHorizontal: 12,
@@ -459,8 +1096,51 @@ const styles = StyleSheet.create({
     reportLocation: {
         fontSize: 14,
         marginLeft: 4,
+        flex: 1,
     },
     reportDate: {
         fontSize: 12,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        padding: 24,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    typeOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 2,
+        marginBottom: 12,
+    },
+    typeOptionSelected: {
+        backgroundColor: 'rgba(11, 83, 148, 0.1)',
+    },
+    typeOptionText: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
+    modalCancel: {
+        padding: 16,
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    modalCancelText: {
+        color: '#FF4B2B',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
