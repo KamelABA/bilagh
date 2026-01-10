@@ -1,13 +1,16 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { API_ENDPOINTS } from '@/constants/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTranslation } from '@/hooks/useTranslation';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
     Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -16,6 +19,15 @@ import {
 import { WebView } from 'react-native-webview';
 
 const { width, height } = Dimensions.get('window');
+
+// Tiaret, Algeria coordinates - 50km radius (~0.45 degrees)
+const TIARET_CENTER = { latitude: 35.3711, longitude: 1.3171 };
+const TIARET_BOUNDS = {
+    north: 35.82,   // ~50km north
+    south: 34.92,   // ~50km south
+    east: 1.87,     // ~50km east
+    west: 0.77,     // ~50km west
+};
 
 interface DamageReport {
     id: number;
@@ -39,57 +51,45 @@ export default function MapScreen() {
     const [loading, setLoading] = useState(true);
     const [selectedReport, setSelectedReport] = useState<DamageReport | null>(null);
     const [mapReady, setMapReady] = useState(false);
+    const [damageReports, setDamageReports] = useState<DamageReport[]>([]);
+    const [statusFilter, setStatusFilter] = useState<string>('all');
 
-    // Sample damage reports in Tiaret, Algeria
-    const damageReports: DamageReport[] = [
-        {
-            id: 1,
-            latitude: 35.3720,
-            longitude: 1.3180,
-            type: t('reports.pothole'),
-            typeKey: 'D40',
-            severity: 'high',
-            status: 'pending',
-            description: t('map.largePotholeOnMainRoad'),
-            createdAt: '2024-12-28',
-        },
-        {
-            id: 2,
-            latitude: 35.3695,
-            longitude: 1.3210,
-            type: t('reports.crack'),
-            typeKey: 'D00',
-            severity: 'medium',
-            status: 'in-progress',
-            description: t('map.roadSurfaceCrack'),
-            createdAt: '2024-12-27',
-        },
-        {
-            id: 3,
-            latitude: 35.3680,
-            longitude: 1.3150,
-            type: t('reports.pothole'),
-            typeKey: 'D40',
-            severity: 'low',
-            status: 'resolved',
-            description: t('map.smallPothole'),
-            createdAt: '2024-12-25',
-        },
-        {
-            id: 4,
-            latitude: 35.3740,
-            longitude: 1.3120,
-            type: t('reports.crack'),
-            typeKey: 'D20',
-            severity: 'high',
-            status: 'pending',
-            description: t('map.alligatorCrack'),
-            createdAt: '2024-12-29',
-        },
-    ];
+    // Fetch user's reports from API
+    const fetchReports = useCallback(async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) return;
 
-    // Tiaret, Algeria coordinates
-    const TIARET_CENTER = { latitude: 35.3711, longitude: 1.3171 };
+            const response = await fetch(API_ENDPOINTS.REPORTS, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Transform API data to match DamageReport interface
+                const reports: DamageReport[] = data
+                    .filter((r: any) => r.latitude && r.longitude)
+                    .map((r: any) => ({
+                        id: r.id,
+                        latitude: r.latitude,
+                        longitude: r.longitude,
+                        type: r.type,
+                        typeKey: r.type === 'pothole' ? 'D40' : r.type === 'crack' ? 'D00' : 'D50',
+                        severity: r.severity as 'low' | 'medium' | 'high',
+                        status: r.status as 'pending' | 'in-progress' | 'resolved',
+                        description: r.description || r.location,
+                        createdAt: r.created_at,
+                    }));
+                setDamageReports(reports);
+            }
+        } catch (error) {
+            console.error('Error fetching reports for map:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchReports();
+    }, [fetchReports]);
 
     useEffect(() => {
         (async () => {
@@ -109,19 +109,29 @@ export default function MapScreen() {
 
                 const { status } = await Location.requestForegroundPermissionsAsync();
                 if (status !== 'granted') {
-                    // Default to Tiaret if permission denied
+                    // Default to Tiaret center if permission denied
                     setLocation(TIARET_CENTER);
                     setLoading(false);
                     return;
                 }
 
                 const currentLocation = await Location.getCurrentPositionAsync({});
-                setLocation({
-                    latitude: currentLocation.coords.latitude,
-                    longitude: currentLocation.coords.longitude,
-                });
+
+                // Check if user is within Tiaret bounds
+                const { latitude, longitude } = currentLocation.coords;
+                if (
+                    latitude >= TIARET_BOUNDS.south &&
+                    latitude <= TIARET_BOUNDS.north &&
+                    longitude >= TIARET_BOUNDS.west &&
+                    longitude <= TIARET_BOUNDS.east
+                ) {
+                    setLocation({ latitude, longitude });
+                } else {
+                    // User is outside Tiaret, show Tiaret center
+                    setLocation(TIARET_CENTER);
+                }
             } catch (error) {
-                // Default to Tiaret
+                // Default to Tiaret center
                 setLocation(TIARET_CENTER);
             } finally {
                 setLoading(false);
@@ -165,31 +175,34 @@ export default function MapScreen() {
         }
     };
 
-    const getMarkerIcon = (severity: string) => {
-        const color = getSeverityColor(severity);
-        return `
-            <div style="
-                width: 30px;
-                height: 30px;
-                background: ${color};
-                border-radius: 50% 50% 50% 0;
-                transform: rotate(-45deg);
-                border: 3px solid white;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            ">
-                <span style="transform: rotate(45deg); color: white; font-size: 14px;">⚠</span>
-            </div>
-        `;
-    };
+    // Filter reports based on selected status
+    const filteredReports = statusFilter === 'all'
+        ? damageReports
+        : damageReports.filter(r => r.status === statusFilter);
+
+    // Filter pill component
+    const FilterPill = ({ label, value, color }: { label: string; value: string; color: string }) => (
+        <TouchableOpacity
+            style={[
+                styles.filterPill,
+                statusFilter === value && { backgroundColor: color, borderColor: color }
+            ]}
+            onPress={() => setStatusFilter(value)}
+        >
+            <Text style={[
+                styles.filterPillText,
+                statusFilter === value ? { color: '#fff' } : { color: isDark ? '#fff' : '#333' }
+            ]}>
+                {label}
+            </Text>
+        </TouchableOpacity>
+    );
 
     // Generate the HTML for the map
     const generateMapHtml = () => {
         if (!location) return '';
 
-        const markers = damageReports.map(report => `
+        const markers = filteredReports.map(report => `
             L.marker([${report.latitude}, ${report.longitude}], {
                 icon: L.divIcon({
                     className: 'custom-marker',
@@ -265,25 +278,44 @@ export default function MapScreen() {
                     .user-location-marker {
                         width: 20px;
                         height: 20px;
-                        background: #667eea;
+                        background: #0B5394;
                         border: 4px solid white;
                         border-radius: 50%;
-                        box-shadow: 0 0 0 8px rgba(102, 126, 234, 0.3), 0 2px 10px rgba(0,0,0,0.3);
+                        box-shadow: 0 0 0 8px rgba(11, 83, 148, 0.3), 0 2px 10px rgba(0,0,0,0.3);
                     }
                 </style>
             </head>
             <body>
                 <div id="map"></div>
                 <script>
+                    // Tiaret boundaries
+                    var tiaretBounds = L.latLngBounds(
+                        L.latLng(${TIARET_BOUNDS.south}, ${TIARET_BOUNDS.west}),
+                        L.latLng(${TIARET_BOUNDS.north}, ${TIARET_BOUNDS.east})
+                    );
+
                     var map = L.map('map', {
                         zoomControl: true,
-                        attributionControl: true
-                    }).setView([${location.latitude}, ${location.longitude}], 15);
+                        attributionControl: true,
+                        maxBounds: tiaretBounds,
+                        maxBoundsViscosity: 1.0,
+                        minZoom: 10,
+                        maxZoom: 18,
+                    }).setView([${location.latitude}, ${location.longitude}], 12);
 
                     // Add OpenStreetMap tiles
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '© OpenStreetMap contributors',
-                        maxZoom: 19,
+                        attribution: '© OpenStreetMap | Tiaret, Algeria',
+                        maxZoom: 18,
+                        minZoom: 10,
+                    }).addTo(map);
+
+                    // Add Tiaret boundary rectangle
+                    L.rectangle(tiaretBounds, {
+                        color: '#0B5394',
+                        weight: 2,
+                        fillOpacity: 0,
+                        dashArray: '5, 10',
                     }).addTo(map);
 
                     // Add user location marker
@@ -336,7 +368,7 @@ export default function MapScreen() {
     if (loading) {
         return (
             <View style={[styles.loadingContainer, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
-                <ActivityIndicator size="large" color="#667eea" />
+                <ActivityIndicator size="large" color="#0B5394" />
                 <Text style={[styles.loadingText, { color: isDark ? '#999' : '#666' }]}>
                     {t('map.loadingMap')}
                 </Text>
@@ -358,7 +390,7 @@ export default function MapScreen() {
                     startInLoadingState={true}
                     renderLoading={() => (
                         <View style={[styles.mapLoading, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-                            <ActivityIndicator size="large" color="#667eea" />
+                            <ActivityIndicator size="large" color="#0B5394" />
                         </View>
                     )}
                 />
@@ -369,20 +401,12 @@ export default function MapScreen() {
                 <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#000' }]}>
                     {t('map.roadDamageMap')}
                 </Text>
-                <View style={styles.legendContainer}>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#FF4B2B' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.high')}</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#FFD200' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.medium')}</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#4ECDC4' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.low')}</Text>
-                    </View>
-                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+                    <FilterPill label={t('reports.all')} value="all" color="#666" />
+                    <FilterPill label={t('reports.pending')} value="pending" color="#FF6B6B" />
+                    <FilterPill label={t('reports.inProgress')} value="in-progress" color="#FFE66D" />
+                    <FilterPill label={t('reports.resolved')} value="resolved" color="#4ECDC4" />
+                </ScrollView>
             </View>
 
             {/* Location Button */}
@@ -390,17 +414,17 @@ export default function MapScreen() {
                 style={[styles.locationButton, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}
                 onPress={centerOnLocation}
             >
-                <IconSymbol name="location.fill" size={24} color="#667eea" />
+                <IconSymbol name="location.fill" size={24} color="#0B5394" />
             </TouchableOpacity>
 
             {/* Reports List Button */}
             <TouchableOpacity
                 style={[styles.listButton, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}
-                onPress={() => setSelectedReport(damageReports[0])}
+                onPress={() => setSelectedReport(filteredReports[0])}
             >
-                <IconSymbol name="list.bullet" size={24} color="#667eea" />
+                <IconSymbol name="list.bullet" size={24} color="#0B5394" />
                 <View style={styles.reportCountBadge}>
-                    <Text style={styles.reportCountText}>{damageReports.length}</Text>
+                    <Text style={styles.reportCountText}>{filteredReports.length}</Text>
                 </View>
             </TouchableOpacity>
 
@@ -449,7 +473,7 @@ export default function MapScreen() {
 
                     <TouchableOpacity style={styles.navigateButton}>
                         <LinearGradient
-                            colors={['#667eea', '#764ba2']}
+                            colors={['#0B5394', '#4A7C2C']}
                             style={styles.navigateButtonGradient}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
@@ -706,5 +730,21 @@ const styles = StyleSheet.create({
         width: 1,
         backgroundColor: 'rgba(128,128,128,0.2)',
         marginVertical: 4,
+    },
+    filterRow: {
+        marginTop: 8,
+    },
+    filterPill: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 16,
+        backgroundColor: 'rgba(150,150,150,0.2)',
+        borderWidth: 1,
+        borderColor: 'rgba(150,150,150,0.3)',
+        marginRight: 8,
+    },
+    filterPillText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
 });

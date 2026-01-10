@@ -1,13 +1,16 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { API_ENDPOINTS } from '@/constants/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTranslation } from '@/hooks/useTranslation';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
     Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -49,6 +52,7 @@ export default function MapScreen() {
     const [selectedReport, setSelectedReport] = useState<DamageReport | null>(null);
     const [mapReady, setMapReady] = useState(false);
     const [damageReports, setDamageReports] = useState<DamageReport[]>([]);
+    const [statusFilter, setStatusFilter] = useState<string>('all');
 
     // Fetch user's reports from API
     const fetchReports = useCallback(async () => {
@@ -158,6 +162,29 @@ export default function MapScreen() {
         }
     };
 
+    // Filter reports based on selected status
+    const filteredReports = statusFilter === 'all'
+        ? damageReports
+        : damageReports.filter(r => r.status === statusFilter);
+
+    // Filter pill component
+    const FilterPill = ({ label, value, color }: { label: string; value: string; color: string }) => (
+        <TouchableOpacity
+            style={[
+                styles.filterPill,
+                statusFilter === value && { backgroundColor: color, borderColor: color }
+            ]}
+            onPress={() => setStatusFilter(value)}
+        >
+            <Text style={[
+                styles.filterPillText,
+                statusFilter === value ? { color: '#fff' } : { color: isDark ? '#fff' : '#333' }
+            ]}>
+                {label}
+            </Text>
+        </TouchableOpacity>
+    );
+
     const getMarkerIcon = (severity: string) => {
         const color = getSeverityColor(severity);
         return `
@@ -182,7 +209,7 @@ export default function MapScreen() {
     const generateMapHtml = () => {
         if (!location) return '';
 
-        const markers = damageReports.map(report => `
+        const markers = filteredReports.map(report => `
             L.marker([${report.latitude}, ${report.longitude}], {
                 icon: L.divIcon({
                     className: 'custom-marker',
@@ -381,20 +408,12 @@ export default function MapScreen() {
                 <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#000' }]}>
                     {t('map.roadDamageMap')}
                 </Text>
-                <View style={styles.legendContainer}>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#FF4B2B' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.high')}</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#FFD200' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.medium')}</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#4ECDC4' }]} />
-                        <Text style={[styles.legendText, { color: isDark ? '#999' : '#666' }]}>{t('map.low')}</Text>
-                    </View>
-                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+                    <FilterPill label={t('reports.all')} value="all" color="#666" />
+                    <FilterPill label={t('reports.pending')} value="pending" color="#FF6B6B" />
+                    <FilterPill label={t('reports.inProgress')} value="in-progress" color="#FFE66D" />
+                    <FilterPill label={t('reports.resolved')} value="resolved" color="#4ECDC4" />
+                </ScrollView>
             </View>
 
             {/* Location Button */}
@@ -718,5 +737,21 @@ const styles = StyleSheet.create({
         width: 1,
         backgroundColor: 'rgba(128,128,128,0.2)',
         marginVertical: 4,
+    },
+    filterRow: {
+        marginTop: 8,
+    },
+    filterPill: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 16,
+        backgroundColor: 'rgba(150,150,150,0.2)',
+        borderWidth: 1,
+        borderColor: 'rgba(150,150,150,0.3)',
+        marginRight: 8,
+    },
+    filterPillText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
 });

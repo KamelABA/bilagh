@@ -505,6 +505,18 @@ def approve_report(
     report.municipal_notes = notes
     report.approved_at = datetime.utcnow()
     
+    # Create notification for all agents
+    agents = db.query(models.User).filter(models.User.role == models.UserRole.agent).all()
+    for agent in agents:
+        notification = models.Notification(
+            user_id=agent.id,
+            title="Report Approved",
+            message=f"Report #{report.id} ({report.type}) at {report.location} has been approved by municipal.",
+            type="info",
+            report_id=report.id
+        )
+        db.add(notification)
+    
     db.commit()
     db.refresh(report)
     return {"message": "Report approved successfully", "report_id": report.id, "status": report.status.value}
@@ -526,6 +538,18 @@ def reject_report(
     
     report.status = "rejected"  # Use lowercase string for database compatibility
     report.municipal_notes = notes
+    
+    # Create notification for all agents
+    agents = db.query(models.User).filter(models.User.role == models.UserRole.agent).all()
+    for agent in agents:
+        notification = models.Notification(
+            user_id=agent.id,
+            title="Report Rejected",
+            message=f"Report #{report.id} ({report.type}) at {report.location} has been rejected by municipal." + (f" Reason: {notes}" if notes else ""),
+            type="alert",
+            report_id=report.id
+        )
+        db.add(notification)
     
     db.commit()
     db.refresh(report)

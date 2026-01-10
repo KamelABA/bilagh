@@ -11,7 +11,7 @@ export default function AgentLayout() {
     return (
         <Tabs
             screenOptions={{
-                tabBarActiveTintColor: '#667eea',
+                tabBarActiveTintColor: '#0B5394',
                 tabBarInactiveTintColor: colorScheme === 'dark' ? '#888' : '#999',
                 tabBarStyle: {
                     backgroundColor: colorScheme === 'dark' ? '#1a1a1a' : '#fff',

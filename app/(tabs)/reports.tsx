@@ -55,7 +55,20 @@ interface Report {
     status: string;
     created_at: string;
     image_url: string | null;
+    verified_at?: string | null;
+    approved_at?: string | null;
+    updated_at?: string | null;
 }
+
+// Status timeline steps in order
+const STATUS_STEPS = [
+    { key: 'pending', labelKey: 'reports.submitted', descKey: 'reports.submittedDesc' },
+    { key: 'verified', labelKey: 'reports.verified', descKey: 'reports.verifiedDesc' },
+    { key: 'approved', labelKey: 'reports.approved', descKey: 'reports.approvedDesc' },
+    { key: 'assigned', labelKey: 'reports.assigned', descKey: 'reports.assignedDesc' },
+    { key: 'in-progress', labelKey: 'reports.inProgress', descKey: 'reports.repairInProgress' },
+    { key: 'resolved', labelKey: 'reports.resolved', descKey: 'reports.issueFixed' },
+];
 
 export default function ReportsScreen() {
     const colorScheme = useColorScheme();
@@ -87,6 +100,10 @@ export default function ReportsScreen() {
 
     // Type selector modal
     const [showTypeSelector, setShowTypeSelector] = useState(false);
+
+    // Report detail modal for tracking
+    const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+    const [showReportDetail, setShowReportDetail] = useState(false);
 
     // Listen for photo and prediction from camera - use useFocusEffect to capture on every navigation
     useFocusEffect(
@@ -648,26 +665,25 @@ export default function ReportsScreen() {
                                 key={filter}
                                 onPress={() => setSelectedFilter(filter)}
                                 activeOpacity={0.7}
-                            >
-                                <View style={[
+                                style={[
                                     styles.filterChip,
                                     {
                                         backgroundColor: selectedFilter === filter
                                             ? '#0B5394'
                                             : isDark ? '#1a1a1a' : '#fff',
                                     },
+                                ]}
+                            >
+                                <Text style={[
+                                    styles.filterText,
+                                    {
+                                        color: selectedFilter === filter
+                                            ? '#fff'
+                                            : isDark ? '#999' : '#666',
+                                    },
                                 ]}>
-                                    <Text style={[
-                                        styles.filterText,
-                                        {
-                                            color: selectedFilter === filter
-                                                ? '#fff'
-                                                : isDark ? '#999' : '#666',
-                                        },
-                                    ]}>
-                                        {getFilterLabel(filter)}
-                                    </Text>
-                                </View>
+                                    {getFilterLabel(filter)}
+                                </Text>
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
@@ -694,8 +710,13 @@ export default function ReportsScreen() {
                             </View>
                         ) : (
                             filteredReports.map((report) => (
-                                <View
+                                <TouchableOpacity
                                     key={report.id}
+                                    activeOpacity={0.7}
+                                    onPress={() => {
+                                        setSelectedReport(report);
+                                        setShowReportDetail(true);
+                                    }}
                                     style={[styles.reportCard, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}
                                 >
                                     {/* Image thumbnail if available */}
@@ -741,7 +762,12 @@ export default function ReportsScreen() {
                                             {formatDate(report.created_at)}
                                         </Text>
                                     </View>
-                                </View>
+                                    {/* Track progress hint */}
+                                    <View style={styles.trackHint}>
+                                        <IconSymbol name="arrow.right.circle.fill" size={14} color="#0B5394" />
+                                        <Text style={styles.trackHintText}>{t('reports.tapToTrack')}</Text>
+                                    </View>
+                                </TouchableOpacity>
                             ))
                         )}
                         <View style={{ height: 100 }} />
@@ -792,6 +818,138 @@ export default function ReportsScreen() {
                         >
                             <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
                         </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Report Detail Modal with Status Timeline */}
+            <Modal
+                visible={showReportDetail}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowReportDetail(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.detailModalContent, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
+                        {/* Header */}
+                        <View style={styles.detailHeader}>
+                            <Text style={[styles.detailTitle, { color: isDark ? '#fff' : '#000' }]}>
+                                {t('reports.reportDetails')}
+                            </Text>
+                            <TouchableOpacity
+                                onPress={() => setShowReportDetail(false)}
+                                style={styles.closeButton}
+                            >
+                                <IconSymbol name="xmark.circle.fill" size={28} color={isDark ? '#666' : '#999'} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            {selectedReport && (
+                                <>
+                                    {/* Report Image */}
+                                    {selectedReport.image_url && (
+                                        <Image
+                                            source={{ uri: selectedReport.image_url }}
+                                            style={styles.detailImage}
+                                            resizeMode="cover"
+                                        />
+                                    )}
+
+                                    {/* Report Info */}
+                                    <View style={styles.detailInfo}>
+                                        <Text style={[styles.detailType, { color: isDark ? '#fff' : '#000' }]}>
+                                            {t(`reports.${selectedReport.type}`) || selectedReport.type}
+                                        </Text>
+                                        <View style={styles.detailRow}>
+                                            <IconSymbol name="location.fill" size={16} color="#0B5394" />
+                                            <Text style={[styles.detailText, { color: isDark ? '#ccc' : '#333' }]}>
+                                                {selectedReport.location}
+                                            </Text>
+                                        </View>
+                                        {selectedReport.description && (
+                                            <Text style={[styles.detailDescription, { color: isDark ? '#999' : '#666' }]}>
+                                                {selectedReport.description}
+                                            </Text>
+                                        )}
+                                    </View>
+
+                                    {/* Status Timeline */}
+                                    <View style={styles.timelineContainer}>
+                                        <Text style={[styles.timelineTitle, { color: isDark ? '#fff' : '#000' }]}>
+                                            {t('reports.statusTimeline')}
+                                        </Text>
+
+                                        {STATUS_STEPS.map((step, index) => {
+                                            const statusOrder = ['pending', 'verified', 'approved', 'assigned', 'in-progress', 'resolved'];
+                                            const currentIndex = statusOrder.indexOf(selectedReport.status);
+                                            const stepIndex = statusOrder.indexOf(step.key);
+
+                                            // Handle rejected status
+                                            const isRejected = selectedReport.status === 'rejected';
+                                            const isCompleted = !isRejected && stepIndex <= currentIndex;
+                                            const isCurrent = step.key === selectedReport.status;
+                                            const isLast = index === STATUS_STEPS.length - 1;
+
+                                            // Get timestamp for this step
+                                            let timestamp = null;
+                                            if (step.key === 'pending' && isCompleted) timestamp = selectedReport.created_at;
+                                            if (step.key === 'verified' && isCompleted) timestamp = selectedReport.verified_at;
+                                            if (step.key === 'approved' && isCompleted) timestamp = selectedReport.approved_at;
+                                            if (step.key === 'resolved' && isCompleted) timestamp = selectedReport.updated_at;
+
+                                            return (
+                                                <View key={step.key} style={styles.timelineStep}>
+                                                    <View style={styles.timelineLeft}>
+                                                        <View style={[
+                                                            styles.timelineDot,
+                                                            isCompleted && styles.timelineDotCompleted,
+                                                            isCurrent && styles.timelineDotCurrent,
+                                                            isRejected && isCurrent && styles.timelineDotRejected,
+                                                        ]}>
+                                                            {isCompleted && !isCurrent && (
+                                                                <IconSymbol name="checkmark" size={12} color="#fff" />
+                                                            )}
+                                                            {isCurrent && (
+                                                                <View style={[
+                                                                    styles.currentDotInner,
+                                                                    isRejected && { backgroundColor: '#FF4B2B' }
+                                                                ]} />
+                                                            )}
+                                                        </View>
+                                                        {!isLast && (
+                                                            <View style={[
+                                                                styles.timelineLine,
+                                                                isCompleted && stepIndex < currentIndex && styles.timelineLineCompleted,
+                                                            ]} />
+                                                        )}
+                                                    </View>
+                                                    <View style={styles.timelineRight}>
+                                                        <Text style={[
+                                                            styles.timelineLabel,
+                                                            { color: isCompleted ? (isDark ? '#fff' : '#000') : (isDark ? '#666' : '#999') },
+                                                            isCurrent && { fontWeight: 'bold' },
+                                                        ]}>
+                                                            {t(step.labelKey)}
+                                                        </Text>
+                                                        {isCurrent && (
+                                                            <Text style={[styles.timelineDesc, { color: isDark ? '#999' : '#666' }]}>
+                                                                {isRejected ? t('reports.reportRejectedDesc') : t(step.descKey)}
+                                                            </Text>
+                                                        )}
+                                                        {timestamp && (
+                                                            <Text style={[styles.timelineTime, { color: isDark ? '#666' : '#999' }]}>
+                                                                {formatDate(timestamp)}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                </>
+                            )}
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -1011,16 +1169,18 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     filters: {
-        marginVertical: 16,
+        marginTop: 12,
+        marginBottom: 20,
+        maxHeight: 40,
     },
     filterChip: {
-        paddingHorizontal: 20,
-        paddingVertical: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
         borderRadius: 20,
-        marginRight: 12,
+        marginRight: 10,
     },
     filterText: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
     },
     list: {
@@ -1142,5 +1302,140 @@ const styles = StyleSheet.create({
         color: '#FF4B2B',
         fontSize: 16,
         fontWeight: '600',
+    },
+    // Track hint on report cards
+    trackHint: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(11, 83, 148, 0.1)',
+        gap: 6,
+    },
+    trackHintText: {
+        color: '#0B5394',
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    // Detail modal styles
+    detailModalContent: {
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        padding: 20,
+        maxHeight: '90%',
+    },
+    detailHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    detailTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    closeButton: {
+        padding: 4,
+    },
+    detailImage: {
+        width: '100%',
+        height: 200,
+        borderRadius: 12,
+        marginBottom: 16,
+    },
+    detailInfo: {
+        marginBottom: 20,
+    },
+    detailType: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        marginBottom: 12,
+    },
+    detailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 8,
+    },
+    detailText: {
+        fontSize: 15,
+        flex: 1,
+    },
+    detailDescription: {
+        fontSize: 14,
+        lineHeight: 20,
+        marginTop: 8,
+    },
+    // Timeline styles
+    timelineContainer: {
+        backgroundColor: 'rgba(11, 83, 148, 0.05)',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 20,
+    },
+    timelineTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 16,
+    },
+    timelineStep: {
+        flexDirection: 'row',
+        minHeight: 44,
+    },
+    timelineLeft: {
+        alignItems: 'center',
+        width: 30,
+    },
+    timelineDot: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: '#ddd',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    timelineDotCompleted: {
+        backgroundColor: '#4ECDC4',
+    },
+    timelineDotCurrent: {
+        backgroundColor: '#0B5394',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+    },
+    timelineDotRejected: {
+        backgroundColor: '#FF4B2B',
+    },
+    currentDotInner: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#fff',
+    },
+    timelineLine: {
+        width: 2,
+        flex: 1,
+        backgroundColor: '#ddd',
+        marginVertical: 4,
+    },
+    timelineLineCompleted: {
+        backgroundColor: '#4ECDC4',
+    },
+    timelineRight: {
+        flex: 1,
+        paddingLeft: 12,
+        paddingBottom: 8,
+    },
+    timelineLabel: {
+        fontSize: 15,
+    },
+    timelineDesc: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    timelineTime: {
+        fontSize: 11,
+        marginTop: 4,
     },
 });

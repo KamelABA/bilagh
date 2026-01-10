@@ -81,7 +81,7 @@ export default function AgentHomeScreen() {
         <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
             {/* Header */}
             <LinearGradient
-                colors={['#667eea', '#764ba2']}
+                colors={isDark ? ['#1a1a1a', '#0a0a0a'] : ['#0B5394', '#4A7C2C']}
                 style={styles.header}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -126,7 +126,7 @@ export default function AgentHomeScreen() {
                             onPress={() => router.push('/(agent)/verification')}
                         >
                             <LinearGradient
-                                colors={['#667eea', '#764ba2']}
+                                colors={['#0B5394', '#075A9E']}
                                 style={styles.actionIcon}
                             >
                                 <IconSymbol name="checkmark.shield.fill" size={24} color="#fff" />
@@ -140,7 +140,7 @@ export default function AgentHomeScreen() {
                             onPress={() => router.push('/(agent)/map')}
                         >
                             <LinearGradient
-                                colors={['#4ECDC4', '#44A08D']}
+                                colors={['#4A7C2C', '#2D5016']}
                                 style={styles.actionIcon}
                             >
                                 <IconSymbol name="map.fill" size={24} color="#fff" />
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     seeAll: {
-        color: '#667eea',
+        color: '#0B5394',
         fontSize: 14,
         fontWeight: '600',
     },

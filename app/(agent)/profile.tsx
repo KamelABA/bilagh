@@ -95,7 +95,7 @@ export default function AgentProfileScreen() {
         <ScrollView style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
             {/* Header */}
             <LinearGradient
-                colors={isDark ? ['#1a1a1a', '#0a0a0a'] : ['#667eea', '#764ba2']}
+                colors={isDark ? ['#1a1a1a', '#0a0a0a'] : ['#0B5394', '#4A7C2C']}
                 style={styles.header}
             >
                 <View style={styles.profileHeader}>
@@ -109,7 +109,7 @@ export default function AgentProfileScreen() {
                 <View style={styles.profileSection}>
                     <View style={styles.avatarContainer}>
                         <LinearGradient
-                            colors={['#4ECDC4', '#667eea']}
+                            colors={['#0B5394', '#4A7C2C']}
                             style={styles.avatarGradient}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
@@ -203,7 +203,7 @@ export default function AgentProfileScreen() {
                         <Text style={[styles.infoLabel, { color: isDark ? '#999' : '#666' }]}>
                             {t('profile.role')}
                         </Text>
-                        <Text style={[styles.infoValue, { color: '#667eea' }]}>
+                        <Text style={[styles.infoValue, { color: '#0B5394' }]}>
                             {t('agent.fieldAgent')}
                         </Text>
                     </View>

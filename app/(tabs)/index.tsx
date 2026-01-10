@@ -23,7 +23,7 @@ export default function HomeScreen() {
   const quickActions = [
     { label: t('home.reportDamage'), icon: 'camera.fill', route: '/camera', gradient: ['#0B5394', '#075A9E'] },
     { label: t('home.viewMap'), icon: 'map.fill', route: '/map', gradient: ['#4A7C2C', '#2D5016'] },
-    { label: t('home.myReports'), icon: 'list.bullet', route: '/complaint', gradient: ['#0B5394', '#4A7C2C'] },
+    { label: t('home.myReports'), icon: 'list.bullet', route: '/reports', gradient: ['#0B5394', '#4A7C2C'] },
   ];
 
   return (
