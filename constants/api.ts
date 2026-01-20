@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 // API Configuration
 // Set this to your deployed backend URL (e.g., https://bilagh-api.onrender.com)
-const PRODUCTION_API_URL = ''; // <-- PUT YOUR RENDER URL HERE AFTER DEPLOYMENT
+const PRODUCTION_API_URL = 'https://bilagh-production.up.railway.app'; // Updated with Railway URL
 
 // For development: Use localhost for web, use your machine's IP for mobile devices
 const LOCAL_IP = '192.168.2.224';

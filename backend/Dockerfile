@@ -11,6 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the backend application
 COPY backend/ .
 
-# Run the application using shell form to expand variable
-# If PORT is missing, default to 8000.
-CMD python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Use exec form with sh -c to properly expand environment variables
+CMD ["/bin/sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
