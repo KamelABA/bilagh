@@ -30,12 +30,15 @@ const MAPPING = {
   'bell': 'notifications',
   'plus': 'add',
   'plus.circle.fill': 'add-circle',
+  'minus.circle.fill': 'remove-circle',
   'xmark.circle.fill': 'cancel',
   'checkmark.circle.fill': 'check-circle',
   'checkmark.shield.fill': 'verified-user',
   'checkmark.shield': 'verified-user',
   'arrow.right.square.fill': 'logout',
   'rectangle.portrait.and.arrow.right': 'logout',
+  'arrow.counterclockwise': 'refresh',
+  'arrow.left.arrow.right': 'swap-horiz',
 
   // Info
   'doc.text.fill': 'description',
@@ -46,6 +49,19 @@ const MAPPING = {
   'questionmark.circle.fill': 'help',
   'questionmark.circle': 'help-outline',
   'calendar': 'calendar-today',
+  'lightbulb.fill': 'lightbulb',
+
+  // Camera & Photos
+  'photo.fill': 'photo-library',
+  'arrow.triangle.2.circlepath.camera': 'flip-camera-ios',
+  'camera.rotate.fill': 'flip-camera-ios',
+  'wand.and.stars': 'auto-fix-high',
+
+  // Feedback Icons
+  'hand.thumbsdown.fill': 'thumb-down',
+  'hand.thumbsup.fill': 'thumb-up',
+  'sun.min.fill': 'wb-sunny',
+  'sun.max.fill': 'light-mode',
 
   // Settings
   'lock.fill': 'lock',
@@ -58,6 +74,7 @@ const MAPPING = {
   'envelope.fill': 'email',
   'phone.fill': 'phone',
   'building.2.fill': 'business',
+  'road.lanes': 'add-road',
 
   // Other
   'paperplane.fill': 'send',
@@ -69,7 +86,6 @@ const MAPPING = {
   'internaldrive.fill': 'storage',
   'shield.fill': 'shield',
   'trash.fill': 'delete',
-  'camera.rotate.fill': 'flip-camera-ios',
   'xmark': 'close',
   'xmark.circle': 'cancel',
 } as IconMapping;

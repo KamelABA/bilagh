@@ -16,12 +16,12 @@ import {
 } from 'react-native';
 
 interface Notification {
-    id: number;
-    user_id: number;
+    id: string;
+    user_id: string;
     title: string;
     message: string;
     type: string;
-    report_id: number | null;
+    report_id: string | null;
     is_read: number;
     created_at: string;
 }
@@ -98,7 +98,7 @@ export default function NotificationsScreen() {
         return `${days} days ago`;
     };
 
-    const markAsRead = async (id: number) => {
+    const markAsRead = async (id: string) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) return;

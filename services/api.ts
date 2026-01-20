@@ -109,7 +109,7 @@ class ApiService {
         return response.json();
     }
 
-    async getReportById(id: number): Promise<Report> {
+    async getReportById(id: string): Promise<Report> {
         const authHeader = await this.getAuthHeader();
         const response = await fetch(API_ENDPOINTS.REPORT_BY_ID(id), {
             headers: {
@@ -124,7 +124,7 @@ class ApiService {
         return response.json();
     }
 
-    async updateReport(id: number, data: UpdateReportRequest): Promise<Report> {
+    async updateReport(id: string, data: UpdateReportRequest): Promise<Report> {
         const authHeader = await this.getAuthHeader();
         const response = await fetch(API_ENDPOINTS.REPORT_BY_ID(id), {
             method: 'PUT',
@@ -143,7 +143,7 @@ class ApiService {
         return response.json();
     }
 
-    async deleteReport(id: number): Promise<void> {
+    async deleteReport(id: string): Promise<void> {
         const authHeader = await this.getAuthHeader();
         const response = await fetch(API_ENDPOINTS.REPORT_BY_ID(id), {
             method: 'DELETE',
@@ -170,49 +170,82 @@ class ApiService {
 
     // Prediction
     async predictDamage(imageUri: string): Promise<PredictionResult> {
-        const formData = new FormData();
+        return new Promise((resolve, reject) => {
+            const formData = new FormData();
 
-        // Get file info from URI
-        const filename = imageUri.split('/').pop() || 'image.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
+            // Get file info from URI
+            const filename = imageUri.split('/').pop() || 'image.jpg';
+            const match = /\.(\w+)$/.exec(filename);
+            const type = match ? `image/${match[1]}` : 'image/jpeg';
 
-        // Append the image file
-        formData.append('file', {
-            uri: imageUri,
-            name: filename,
-            type: type,
-        } as any);
+            console.log('API predictDamage - Using XMLHttpRequest');
+            console.log('API predictDamage - URL:', API_ENDPOINTS.PREDICT);
+            console.log('API predictDamage - Filename:', filename);
+            console.log('API predictDamage - MIME Type:', type);
 
-        // Create abort controller for timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+            // Append the image file
+            formData.append('file', {
+                uri: imageUri,
+                name: filename,
+                type: type,
+            } as any);
 
-        try {
-            const response = await fetch(API_ENDPOINTS.PREDICT, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-                signal: controller.signal,
-            });
+            const xhr = new XMLHttpRequest();
 
-            clearTimeout(timeoutId);
+            // Set up event handlers
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState !== 4) return;
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Prediction failed');
-            }
+                console.log('API predictDamage - Response received:', xhr.status);
 
-            return response.json();
-        } catch (error: any) {
-            clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
-                throw new Error('Request timed out. Please try again.');
-            }
-            throw error;
-        }
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const result = JSON.parse(xhr.responseText);
+                        console.log('API predictDamage - Success');
+                        resolve(result);
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${xhr.responseText}`));
+                    }
+                } else if (xhr.status === 0) {
+                    reject(new Error(
+                        `Network connection failed\n\n` +
+                        `Endpoint: ${API_ENDPOINTS.PREDICT}\n\n` +
+                        `This usually means:\n` +
+                        `• Connection was interrupted\n` +
+                        `• Server is unreachable\n` +
+                        `• Request was blocked\n\n` +
+                        `Response: ${xhr.responseText || 'No response'}`
+                    ));
+                } else {
+                    reject(new Error(`Server error (${xhr.status}): ${xhr.responseText}`));
+                }
+            };
+
+            xhr.onerror = () => {
+                console.error('API predictDamage - XHR Error');
+                reject(new Error(
+                    `Upload failed\n\n` +
+                    `Endpoint: ${API_ENDPOINTS.PREDICT}\n\n` +
+                    `Check:\n` +
+                    `• Backend is running\n` +
+                    `• Network is stable\n` +
+                    `• Firewall allows connection`
+                ));
+            };
+
+            xhr.ontimeout = () => {
+                console.error('API predictDamage - Timeout');
+                reject(new Error('Request timed out after 90 seconds. The server may be overloaded.'));
+            };
+
+            // Open and configure request
+            xhr.open('POST', API_ENDPOINTS.PREDICT, true);
+            xhr.timeout = 90000; // 90 second timeout
+
+            // Send the request
+            console.log('API predictDamage - Sending request...');
+            xhr.send(formData);
+        });
     }
 
     async getModelInfo(): Promise<ModelInfo> {

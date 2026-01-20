@@ -1,3 +1,4 @@
+import PredictionFeedbackModal, { FeedbackSubmission } from '@/components/PredictionFeedbackModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -27,12 +28,14 @@ interface PredictionDisplayProps {
     imageUri: string;
     onClose: () => void;
     onProceedToReport: () => void;
+    onFeedback: (feedback: FeedbackSubmission) => void;
     isDark: boolean;
     t: (key: string) => string;
     isArabic: boolean;
 }
 
-function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, isDark, t, isArabic }: PredictionDisplayProps) {
+function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFeedback, isDark, t, isArabic }: PredictionDisplayProps) {
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
     const getSeverityColor = (severity: string): [string, string] => {
         switch (severity) {
             case 'high': return ['#FF416C', '#FF4B2B'];
@@ -108,6 +111,25 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, isDar
                     </View>
                 )}
             </View>
+
+            {/* Feedback Button - Right after image */}
+            <TouchableOpacity
+                style={[
+                    styles.feedbackButton,
+                    {
+                        backgroundColor: isDark ? 'rgba(102, 126, 234, 0.15)' : 'rgba(102, 126, 234, 0.08)',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(102, 126, 234, 0.4)' : 'rgba(102, 126, 234, 0.3)',
+                    }
+                ]}
+                onPress={() => setShowFeedbackModal(true)}
+            >
+                <IconSymbol name="hand.thumbsdown.fill" size={20} color="#667eea" />
+                <Text style={[styles.feedbackButtonText, { color: '#667eea' }]}>
+                    {t('feedback.title')}
+                </Text>
+                <IconSymbol name="chevron.right" size={16} color="#667eea" />
+            </TouchableOpacity>
 
             {/* Road Condition Card - Shows when no damage detected */}
             {!result.detected && (
@@ -330,6 +352,18 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, isDar
                     </TouchableOpacity>
                 )}
             </View>
+
+            {/* Feedback Modal */}
+            <PredictionFeedbackModal
+                visible={showFeedbackModal}
+                prediction={result}
+                imageUri={imageUri}
+                onClose={() => setShowFeedbackModal(false)}
+                onSubmitFeedback={(feedback) => {
+                    setShowFeedbackModal(false);
+                    onFeedback(feedback);
+                }}
+            />
         </ScrollView>
     );
 }
@@ -380,8 +414,13 @@ export default function CameraScreen() {
     const takePicture = async () => {
         if (cameraRef.current) {
             try {
-                const photo = await cameraRef.current.takePictureAsync();
+                // Use lower quality to reduce file size for faster upload
+                const photo = await cameraRef.current.takePictureAsync({
+                    quality: 0.5, // 50% quality to reduce file size
+                    skipProcessing: false,
+                });
                 if (photo) {
+                    console.log('Camera - Photo captured:', photo.uri);
                     setCapturedImage(photo.uri);
                 }
             } catch (error) {
@@ -395,10 +434,11 @@ export default function CameraScreen() {
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [4, 3],
-            quality: 1,
+            quality: 0.5, // 50% quality to reduce file size for faster upload
         });
 
         if (!result.canceled) {
+            console.log('Camera - Image picked:', result.assets[0].uri);
             setCapturedImage(result.assets[0].uri);
         }
     };
@@ -420,13 +460,29 @@ export default function CameraScreen() {
         setPredictionResult(null);
 
         try {
+            console.log('Camera Analysis - Starting prediction for:', capturedImage);
             const result = await apiService.predictDamage(capturedImage);
+            console.log('Camera Analysis - Success:', result);
             setPredictionResult(result);
-        } catch (error) {
-            console.error('Prediction error:', error);
+        } catch (error: any) {
+            const errorMessage = error?.message || String(error);
+            console.error('Camera Analysis - Error:', errorMessage);
+
+            // Determine error type and show helpful message
+            let userMessage = '';
+            if (errorMessage.includes('Network request failed') || errorMessage.includes('network')) {
+                userMessage = `Cannot connect to server\n\nPossible causes:\n• Backend server not running\n• Phone and computer on different WiFi\n• Wrong IP address in app settings\n• Firewall blocking connection\n\nTechnical: ${errorMessage}`;
+            } else if (errorMessage.includes('timeout')) {
+                userMessage = `Connection timeout\n\nThe server took too long to respond.\n\nTry:\n• Check if backend is running\n• Restart the backend server\n\nTechnical: ${errorMessage}`;
+            } else if (errorMessage.includes('500') || errorMessage.includes('Internal')) {
+                userMessage = `Server error\n\nThe backend encountered an error processing the image.\n\nCheck backend terminal for details.\n\nTechnical: ${errorMessage}`;
+            } else {
+                userMessage = `Analysis failed\n\n${errorMessage}`;
+            }
+
             Alert.alert(
                 t('common.error'),
-                t('camera.analysisFailed'),
+                userMessage,
                 [{ text: t('common.done'), onPress: () => setIsAnalyzing(false) }]
             );
         } finally {
@@ -443,6 +499,17 @@ export default function CameraScreen() {
         setPredictionResult(null);
     };
 
+    // Handle feedback submission
+    const handleFeedbackSubmit = (feedback: FeedbackSubmission) => {
+        console.log('📋 Feedback received:', feedback);
+        // TODO: Send feedback to backend for model improvement
+        Alert.alert(
+            t('common.success'),
+            'Thank you for your feedback! It will help improve our detection.',
+            [{ text: t('common.done') }]
+        );
+    };
+
     // Show prediction result with image
     if (predictionResult && capturedImage) {
         return (
@@ -452,6 +519,7 @@ export default function CameraScreen() {
                     imageUri={capturedImage}
                     onClose={retakePhoto}
                     onProceedToReport={proceedToReport}
+                    onFeedback={handleFeedbackSubmit}
                     isDark={isDark}
                     t={t}
                     isArabic={isArabic}
@@ -523,6 +591,7 @@ export default function CameraScreen() {
                         <View style={styles.iconButtonInner}>
                             <IconSymbol name="photo.fill" size={28} color="#fff" />
                         </View>
+                        <Text style={styles.iconButtonLabel}>{t('camera.gallery')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity onPress={takePicture} style={styles.captureButton}>
@@ -533,6 +602,7 @@ export default function CameraScreen() {
                         <View style={styles.iconButtonInner}>
                             <IconSymbol name="arrow.triangle.2.circlepath.camera" size={28} color="#fff" />
                         </View>
+                        <Text style={styles.iconButtonLabel}>{t('camera.flip')}</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -613,8 +683,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 40,
     },
     iconButton: {
-        width: 60,
-        height: 60,
+        width: 70,
+        alignItems: 'center',
     },
     iconButtonInner: {
         width: 60,
@@ -625,6 +695,16 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderWidth: 2,
         borderColor: '#fff',
+    },
+    iconButtonLabel: {
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: '600',
+        marginTop: 6,
+        textAlign: 'center',
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 3,
     },
     captureButton: {
         width: 80,
@@ -1105,5 +1185,21 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         marginLeft: 8,
+    },
+    // Feedback Button
+    feedbackButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        marginBottom: 16,
+    },
+    feedbackButtonText: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 12,
     },
 });

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, Any
 from datetime import datetime
 from models import ReportStatus, SeverityLevel, UserRole
 
@@ -18,13 +18,10 @@ class UserLogin(BaseModel):
     password: str
 
 class User(UserBase):
-    id: int
+    id: str
     role: UserRole
     points: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 # Report Schemas
 class ReportBase(BaseModel):
@@ -43,37 +40,30 @@ class ReportUpdate(BaseModel):
     severity: Optional[SeverityLevel] = None
 
 class Report(ReportBase):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     status: ReportStatus
     image_url: Optional[str] = None
+    assigned_agent_id: Optional[str] = None
+    municipal_notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 # Report with User info for agents
 class UserInfo(BaseModel):
-    id: int
+    id: str
     full_name: Optional[str] = None
     email: str
     phone: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
 class ReportWithUser(ReportBase):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     status: ReportStatus
     image_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     user: UserInfo
-
-    class Config:
-        from_attributes = True
 
 # Token Schemas
 class Token(BaseModel):
@@ -85,14 +75,11 @@ class TokenData(BaseModel):
 
 # Notification Schemas
 class Notification(BaseModel):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     title: str
     message: str
     type: str
-    report_id: Optional[int] = None
+    report_id: Optional[str] = None
     is_read: int
     created_at: datetime
-
-    class Config:
-        from_attributes = True

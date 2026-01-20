@@ -47,7 +47,7 @@ interface FormErrors {
 }
 
 interface Report {
-    id: number;
+    id: string;
     type: string;
     location: string;
     description: string | null;

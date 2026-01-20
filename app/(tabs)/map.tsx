@@ -30,7 +30,7 @@ const TIARET_BOUNDS = {
 };
 
 interface DamageReport {
-    id: number;
+    id: string;
     latitude: number;
     longitude: number;
     type: string;

@@ -24,14 +24,14 @@ import {
 const { width, height } = Dimensions.get('window');
 
 interface ReportUser {
-    id: number;
+    id: string;
     full_name: string | null;
     email: string;
     phone: string | null;
 }
 
 interface VerificationReport {
-    id: number;
+    id: string;
     type: string;
     location: string;
     latitude: number | null;
@@ -42,7 +42,7 @@ interface VerificationReport {
     image_url: string | null;
     created_at: string;
     updated_at: string;
-    user_id: number;
+    user_id: string;
     user: ReportUser;
 }
 
@@ -64,6 +64,12 @@ export default function VerificationScreen() {
     const [reports, setReports] = useState<VerificationReport[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+
+    // AI Analysis states
+    const [analyzing, setAnalyzing] = useState(false);
+    const [analysisResult, setAnalysisResult] = useState<any>(null);
+    const [selectedRoadType, setSelectedRoadType] = useState<'main' | 'secondary' | 'residential'>('secondary');
+    const [selectedMaterial, setSelectedMaterial] = useState<'asphalt' | 'concrete'>('asphalt');
 
     // Fetch reports from API
     const fetchReports = useCallback(async () => {
@@ -126,6 +132,7 @@ export default function VerificationScreen() {
 
     const handleSelectReport = (report: VerificationReport) => {
         setSelectedReport(report);
+        setAnalysisResult(null); // Reset analysis when selecting new report
         setCurrentStep('verify');
     };
 
@@ -227,6 +234,77 @@ export default function VerificationScreen() {
                 t('common.error'),
                 `${t('agent.verificationFailed')}\n\nError: ${error?.message || String(error)}`
             );
+        }
+    };
+
+    // AI Analysis function
+    const runAIAnalysis = async () => {
+        if (!selectedReport?.image_url) {
+            Alert.alert(t('common.error'), t('agent.noImageToAnalyze'));
+            return;
+        }
+
+        setAnalyzing(true);
+        setAnalysisResult(null);
+
+        try {
+            // Use URL-based endpoint - backend will fetch the image
+            const encodedUrl = encodeURIComponent(selectedReport.image_url);
+            const fullUrl = `${API_ENDPOINTS.ANALYZE_COMPLETE_URL}?image_url=${encodedUrl}&road_type=${selectedRoadType}&material=${selectedMaterial}`;
+
+            console.log('AI Analysis - Calling URL:', fullUrl);
+            console.log('AI Analysis - Image URL:', selectedReport.image_url);
+
+            const response = await fetch(fullUrl, {
+                method: 'GET',
+            });
+
+            console.log('AI Analysis - Response status:', response.status);
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('AI Analysis - Success:', result);
+                setAnalysisResult(result);
+            } else {
+                const errorData = await response.text();
+                console.error('AI Analysis - Failed:', response.status, errorData);
+                Alert.alert(
+                    t('common.error'),
+                    `Status: ${response.status}\n\nURL: ${API_ENDPOINTS.ANALYZE_COMPLETE_URL}\n\nDetails: ${errorData}`
+                );
+            }
+        } catch (error: any) {
+            const errorMessage = error?.message || String(error);
+            console.error('AI Analysis - Network Error:', errorMessage);
+            Alert.alert(
+                t('common.error'),
+                `Network Error\n\nBackend URL: ${API_ENDPOINTS.ANALYZE_COMPLETE_URL}\n\nError: ${errorMessage}\n\nMake sure:\n1. Backend is running on port 8000\n2. Phone and computer on same WiFi\n3. IP address is correct in api.ts`
+            );
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
+    // Get urgency color
+    const getUrgencyColor = (urgency: string) => {
+        switch (urgency) {
+            case 'critical': return '#FF0000';
+            case 'high': return '#FF4B2B';
+            case 'medium': return '#FFD200';
+            case 'low': return '#4ECDC4';
+            default: return '#999';
+        }
+    };
+
+    // Get priority label
+    const getPriorityLabel = (priority: string) => {
+        switch (priority) {
+            case 'P1 - Immediate': return t('agent.priorityImmediate');
+            case 'P2 - Urgent': return t('agent.priorityUrgent');
+            case 'P3 - Scheduled': return t('agent.priorityScheduled');
+            case 'P4 - Routine': return t('agent.priorityRoutine');
+            case 'P5 - Monitor': return t('agent.priorityMonitor');
+            default: return priority;
         }
     };
 
@@ -452,6 +530,209 @@ export default function VerificationScreen() {
                                     <IconSymbol name="chevron.right" size={12} color="#4ECDC4" />
                                 </View>
                             </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {/* AI Risk Assessment Panel */}
+                    <View style={[styles.detailCard, { backgroundColor: isDark ? '#1a1a1a' : '#fff' }]}>
+                        <View style={styles.detailHeader}>
+                            <Text style={[styles.detailTitle, { color: isDark ? '#fff' : '#000' }]}>
+                                🤖 {t('agent.aiAnalysis')}
+                            </Text>
+                        </View>
+
+                        {/* Road Type Selection */}
+                        <Text style={[styles.sectionLabel, { color: isDark ? '#999' : '#666' }]}>
+                            {t('agent.roadType')}
+                        </Text>
+                        <View style={styles.optionRow}>
+                            {(['main', 'secondary', 'residential'] as const).map((type) => (
+                                <TouchableOpacity
+                                    key={type}
+                                    style={[
+                                        styles.optionChip,
+                                        selectedRoadType === type && styles.optionChipSelected,
+                                        { borderColor: selectedRoadType === type ? '#667eea' : (isDark ? '#333' : '#ddd') }
+                                    ]}
+                                    onPress={() => setSelectedRoadType(type)}
+                                >
+                                    <Text style={[
+                                        styles.optionChipText,
+                                        { color: selectedRoadType === type ? '#667eea' : (isDark ? '#999' : '#666') }
+                                    ]}>
+                                        {type === 'main' ? t('agent.roadMain') :
+                                            type === 'secondary' ? t('agent.roadSecondary') :
+                                                t('agent.roadResidential')}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {/* Material Selection */}
+                        <Text style={[styles.sectionLabel, { color: isDark ? '#999' : '#666', marginTop: 12 }]}>
+                            {t('agent.material')}
+                        </Text>
+                        <View style={styles.optionRow}>
+                            {(['asphalt', 'concrete'] as const).map((mat) => (
+                                <TouchableOpacity
+                                    key={mat}
+                                    style={[
+                                        styles.optionChip,
+                                        selectedMaterial === mat && styles.optionChipSelected,
+                                        { borderColor: selectedMaterial === mat ? '#667eea' : (isDark ? '#333' : '#ddd') }
+                                    ]}
+                                    onPress={() => setSelectedMaterial(mat)}
+                                >
+                                    <Text style={[
+                                        styles.optionChipText,
+                                        { color: selectedMaterial === mat ? '#667eea' : (isDark ? '#999' : '#666') }
+                                    ]}>
+                                        {mat === 'asphalt' ? t('agent.materialAsphalt') : t('agent.materialConcrete')}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {/* Run Analysis Button */}
+                        <TouchableOpacity
+                            onPress={runAIAnalysis}
+                            disabled={analyzing || !selectedReport?.image_url}
+                            style={{ marginTop: 16 }}
+                        >
+                            <LinearGradient
+                                colors={analyzing ? ['#999', '#666'] : ['#667eea', '#764ba2']}
+                                style={[styles.analysisButton, { opacity: selectedReport?.image_url ? 1 : 0.5 }]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            >
+                                {analyzing ? (
+                                    <>
+                                        <ActivityIndicator size="small" color="#fff" />
+                                        <Text style={styles.analysisButtonText}>{t('agent.analyzingDamage')}</Text>
+                                    </>
+                                ) : (
+                                    <>
+                                        <IconSymbol name="wand.and.stars" size={20} color="#fff" />
+                                        <Text style={styles.analysisButtonText}>{t('agent.runAiAnalysis')}</Text>
+                                    </>
+                                )}
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        {/* Analysis Results */}
+                        {analysisResult && analysisResult.detected && (
+                            <View style={styles.analysisResults}>
+                                {/* Risk Index Gauge */}
+                                <View style={styles.riskGaugeContainer}>
+                                    <View style={[styles.riskGauge, { backgroundColor: isDark ? '#0a0a0a' : '#f0f0f0' }]}>
+                                        <View
+                                            style={[
+                                                styles.riskGaugeFill,
+                                                {
+                                                    width: `${analysisResult.risk_assessment?.risk_index || 0}%`,
+                                                    backgroundColor: getUrgencyColor(analysisResult.risk_assessment?.urgency || 'low')
+                                                }
+                                            ]}
+                                        />
+                                    </View>
+                                    <View style={styles.riskGaugeLabels}>
+                                        <Text style={[styles.riskLabel, { color: isDark ? '#fff' : '#000' }]}>
+                                            {t('agent.riskIndex')}
+                                        </Text>
+                                        <Text style={[styles.riskValue, { color: getUrgencyColor(analysisResult.risk_assessment?.urgency || 'low') }]}>
+                                            {analysisResult.risk_assessment?.risk_index}/100
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                {/* Urgency & Priority */}
+                                <View style={styles.urgencyPriorityRow}>
+                                    <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(analysisResult.risk_assessment?.urgency || 'low') + '20' }]}>
+                                        <Text style={[styles.urgencyLabel, { color: getUrgencyColor(analysisResult.risk_assessment?.urgency || 'low') }]}>
+                                            {t('agent.urgency')}: {analysisResult.risk_assessment?.urgency_label?.en || analysisResult.risk_assessment?.urgency}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.priorityBadge, { backgroundColor: isDark ? '#0a0a0a' : '#f0f0f0' }]}>
+                                        <Text style={[styles.priorityLabel, { color: isDark ? '#fff' : '#000' }]}>
+                                            {getPriorityLabel(analysisResult.risk_assessment?.priority || '')}
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                {/* Measurements */}
+                                <View style={[styles.measurementsCard, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
+                                    <Text style={[styles.measurementsTitle, { color: isDark ? '#fff' : '#000' }]}>
+                                        📐 {t('agent.measurements')}
+                                    </Text>
+                                    <View style={styles.measurementsGrid}>
+                                        <View style={styles.measurementItem}>
+                                            <Text style={[styles.measurementLabel, { color: isDark ? '#999' : '#666' }]}>{t('agent.length')}</Text>
+                                            <Text style={[styles.measurementValue, { color: isDark ? '#fff' : '#000' }]}>
+                                                {analysisResult.geometry?.measurements?.length?.value_cm?.toFixed(1) || 'N/A'} cm
+                                            </Text>
+                                        </View>
+                                        <View style={styles.measurementItem}>
+                                            <Text style={[styles.measurementLabel, { color: isDark ? '#999' : '#666' }]}>{t('agent.width')}</Text>
+                                            <Text style={[styles.measurementValue, { color: isDark ? '#fff' : '#000' }]}>
+                                                {analysisResult.geometry?.measurements?.width?.value_cm?.toFixed(1) || 'N/A'} cm
+                                            </Text>
+                                        </View>
+                                        <View style={styles.measurementItem}>
+                                            <Text style={[styles.measurementLabel, { color: isDark ? '#999' : '#666' }]}>{t('agent.depth')}</Text>
+                                            <Text style={[styles.measurementValue, { color: isDark ? '#fff' : '#000' }]}>
+                                                {analysisResult.geometry?.measurements?.depth?.value_cm?.toFixed(1) || 'N/A'} cm
+                                            </Text>
+                                        </View>
+                                        <View style={styles.measurementItem}>
+                                            <Text style={[styles.measurementLabel, { color: isDark ? '#999' : '#666' }]}>{t('agent.surfaceArea')}</Text>
+                                            <Text style={[styles.measurementValue, { color: isDark ? '#fff' : '#000' }]}>
+                                                {analysisResult.geometry?.measurements?.surface_area?.value_cm2?.toFixed(0) || 'N/A'} cm²
+                                            </Text>
+                                        </View>
+                                    </View>
+                                </View>
+
+                                {/* Risk Explanation */}
+                                <View style={[styles.explanationBox, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
+                                    <Text style={[styles.explanationText, { color: isDark ? '#ccc' : '#333' }]}>
+                                        {analysisResult.risk_assessment?.risk_explanation}
+                                    </Text>
+                                </View>
+
+                                {/* Recommendations */}
+                                {analysisResult.risk_assessment?.recommendations?.length > 0 && (
+                                    <View style={styles.recommendationsSection}>
+                                        <Text style={[styles.recommendationsTitle, { color: isDark ? '#fff' : '#000' }]}>
+                                            💡 {t('agent.recommendations')}
+                                        </Text>
+                                        {analysisResult.risk_assessment.recommendations.map((rec: string, idx: number) => (
+                                            <View key={idx} style={styles.recommendationItem}>
+                                                <Text style={styles.recommendationBullet}>•</Text>
+                                                <Text style={[styles.recommendationText, { color: isDark ? '#999' : '#666' }]}>
+                                                    {rec}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
+
+                                {/* Confidence */}
+                                <View style={styles.confidenceRow}>
+                                    <Text style={[styles.confidenceLabel, { color: isDark ? '#666' : '#999' }]}>
+                                        {t('agent.confidence')}: {((analysisResult.risk_assessment?.confidence || 0) * 100).toFixed(0)}%
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* No damage detected message */}
+                        {analysisResult && !analysisResult.detected && (
+                            <View style={[styles.noDamageBox, { backgroundColor: '#4ECDC420' }]}>
+                                <IconSymbol name="checkmark.circle.fill" size={24} color="#4ECDC4" />
+                                <Text style={[styles.noDamageText, { color: '#4ECDC4' }]}>
+                                    {analysisResult.message || 'No damage detected in image'}
+                                </Text>
+                            </View>
                         )}
                     </View>
 
@@ -1137,5 +1418,177 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: '#4ECDC4',
         fontWeight: '600',
+    },
+    // AI Analysis Styles
+    sectionLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 8,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    optionRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    optionChip: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1.5,
+    },
+    optionChipSelected: {
+        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+    },
+    optionChipText: {
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    analysisButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 14,
+        borderRadius: 12,
+        gap: 8,
+    },
+    analysisButtonText: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    analysisResults: {
+        marginTop: 20,
+    },
+    riskGaugeContainer: {
+        marginBottom: 16,
+    },
+    riskGauge: {
+        height: 12,
+        borderRadius: 6,
+        overflow: 'hidden',
+    },
+    riskGaugeFill: {
+        height: '100%',
+        borderRadius: 6,
+    },
+    riskGaugeLabels: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    riskLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    riskValue: {
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    urgencyPriorityRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 16,
+    },
+    urgencyBadge: {
+        flex: 1,
+        padding: 12,
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    urgencyLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    priorityBadge: {
+        flex: 1,
+        padding: 12,
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    priorityLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        textAlign: 'center',
+    },
+    measurementsCard: {
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 16,
+    },
+    measurementsTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 12,
+    },
+    measurementsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    measurementItem: {
+        width: '50%',
+        marginBottom: 12,
+    },
+    measurementLabel: {
+        fontSize: 11,
+        marginBottom: 2,
+    },
+    measurementValue: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    explanationBox: {
+        padding: 14,
+        borderRadius: 10,
+        marginBottom: 16,
+    },
+    explanationText: {
+        fontSize: 13,
+        lineHeight: 20,
+        fontStyle: 'italic',
+    },
+    recommendationsSection: {
+        marginBottom: 12,
+    },
+    recommendationsTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 10,
+    },
+    recommendationItem: {
+        flexDirection: 'row',
+        marginBottom: 6,
+    },
+    recommendationBullet: {
+        color: '#667eea',
+        fontSize: 14,
+        marginRight: 8,
+        fontWeight: 'bold',
+    },
+    recommendationText: {
+        fontSize: 13,
+        lineHeight: 18,
+        flex: 1,
+    },
+    confidenceRow: {
+        alignItems: 'flex-end',
+    },
+    confidenceLabel: {
+        fontSize: 11,
+    },
+    noDamageBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 12,
+        marginTop: 16,
+        gap: 12,
+    },
+    noDamageText: {
+        fontSize: 14,
+        fontWeight: '500',
+        flex: 1,
     },
 });

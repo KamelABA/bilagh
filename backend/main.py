@@ -1,26 +1,25 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session, joinedload
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import timedelta, datetime
-import models
-import schemas
 import auth
-from database import engine, get_db
+from database import db
 import os
 from dotenv import load_dotenv
 import predict
 import cloudinary_config
+import geometric_analysis
+import risk_assessment
+from models import UserRole, ReportStatus
+import schemas
+from bson import ObjectId
 
 load_dotenv()
 
-# Create database tables
-models.Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="Bilagh API", version="1.0.0")
 
-# CORS Configuration - Allow all origins for development
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,654 +28,419 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Helpers
+def fix_id(doc):
+    if doc and "_id" in doc:
+        doc["id"] = str(doc["_id"])
+    return doc
+
 # Root endpoint
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to Bilagh API", "version": "1.0.0"}
+    return {"message": "Welcome to Bilagh API (MongoDB)", "version": "1.0.0"}
 
-# Authentication endpoints
+# Authentication
 @app.post("/register", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    # Check if user exists
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
+async def register(user: schemas.UserCreate):
+    if await db.users.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
-    
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if db_user:
+    if await db.users.find_one({"username": user.username}):
         raise HTTPException(status_code=400, detail="Username already taken")
     
-    # Create new user
     hashed_password = auth.get_password_hash(user.password)
-    db_user = models.User(
-        email=user.email,
-        username=user.username,
-        full_name=user.full_name,
-        phone=user.phone,
-        hashed_password=hashed_password
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    user_dict = user.dict()
+    user_dict.pop("password")
+    
+    new_user = {
+        **user_dict,
+        "hashed_password": hashed_password,
+        "role": UserRole.USER,
+        "points": 0,
+        "created_at": datetime.utcnow()
+    }
+    result = await db.users.insert_one(new_user)
+    new_user["id"] = str(result.inserted_id)
+    return new_user
 
 @app.post("/token", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
-    if not user or not auth.verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = await db.users.find_one({"email": form_data.username})
+    if not user or not auth.verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+    
     access_token = auth.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
+        data={"sub": user["email"]}, 
+        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/users/me", response_model=schemas.User)
-async def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
+async def read_users_me(current_user: schemas.User = Depends(auth.get_current_user)):
     return current_user
 
-# Initialize agent user
+# Initialization
 @app.post("/init-agent")
-def init_agent(db: Session = Depends(get_db)):
-    # Check if agent already exists
-    agent = db.query(models.User).filter(models.User.email == "agent@bilagh.dz").first()
-    if agent:
-        return {"message": "Agent user already exists", "email": agent.email}
+async def init_agent():
+    if await db.users.find_one({"email": "agent@bilagh.dz"}):
+        return {"message": "Agent already exists"}
     
-    # Create agent user
-    hashed_password = auth.get_password_hash("agent123")
-    agent = models.User(
-        email="agent@bilagh.dz",
-        username="field_agent",
-        full_name="Field Agent",
-        phone="+213555123456",
-        hashed_password=hashed_password,
-        role="agent",  # Use lowercase string to match PostgreSQL enum
-        points=0
-    )
-    db.add(agent)
-    db.commit()
-    db.refresh(agent)
-    return {"message": "Agent user created successfully", "email": agent.email, "role": agent.role}
+    new_agent = {
+        "email": "agent@bilagh.dz",
+        "username": "field_agent",
+        "full_name": "Field Agent",
+        "phone": "+213555123456",
+        "hashed_password": auth.get_password_hash("agent123"),
+        "role": UserRole.agent,
+        "points": 0,
+        "created_at": datetime.utcnow()
+    }
+    await db.users.insert_one(new_agent)
+    return {"message": "Agent created successfully"}
 
-# Image upload endpoint
-@app.post("/upload-image")
-async def upload_image(
-    file: UploadFile = File(...),
-    current_user: models.User = Depends(auth.get_current_user)
-):
-    """
-    Upload an image to Cloudinary with compression.
-    Returns the URL to use when creating a report.
-    """
-    # Validate file type
-    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}"
-        )
+@app.post("/init-municipal")
+async def init_municipal():
+    if await db.users.find_one({"email": "municipal@bilagh.dz"}):
+        return {"message": "Municipal already exists"}
     
-    # Validate file size (max 10MB)
+    new_muni = {
+        "email": "municipal@bilagh.dz",
+        "username": "municipal_authority",
+        "full_name": "Municipal Authority",
+        "phone": "+213555000000",
+        "hashed_password": auth.get_password_hash("municipal123"),
+        "role": UserRole.municipal,
+        "points": 0,
+        "created_at": datetime.utcnow()
+    }
+    await db.users.insert_one(new_muni)
+    return {"message": "Municipal created successfully"}
+
+# Image Upload
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...), current_user: schemas.User = Depends(auth.get_current_user)):
+    allowed = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
+    if file.content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    
     contents = await file.read()
-    if len(contents) > 10 * 1024 * 1024:  # 10MB
-        raise HTTPException(status_code=400, detail="File too large. Maximum 10MB allowed.")
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large")
     
     try:
-        # Upload to Cloudinary with compression
         result = cloudinary_config.upload_image(contents)
         return {
-            "success": True,
-            "url": result["url"],
-            "public_id": result["public_id"],
-            "width": result.get("width"),
-            "height": result.get("height"),
-            "format": result.get("format"),
-            "size_bytes": result.get("bytes"),
+            "success": True, "url": result["url"], "public_id": result["public_id"],
+            "width": result.get("width"), "height": result.get("height"),
+            "format": result.get("format"), "size_bytes": result.get("bytes")
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-# Report endpoints
-@app.post("/reports", response_model=schemas.Report, status_code=status.HTTP_201_CREATED)
-def create_report(
-    report: schemas.ReportCreate,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    db_report = models.Report(**report.dict(), user_id=current_user.id)
-    db.add(db_report)
-    
-    # Award points to user
-    current_user.points += 10
-    
-    db.commit()
-    db.refresh(db_report)
-    return db_report
-
-@app.get("/reports", response_model=List[schemas.Report])
-def get_reports(
-    skip: int = 0,
-    limit: int = 100,
-    status: str = None,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    query = db.query(models.Report).filter(models.Report.user_id == current_user.id)
-    if status:
-        query = query.filter(models.Report.status == status)
-    reports = query.offset(skip).limit(limit).all()
-    return reports
-
-@app.get("/reports/{report_id}", response_model=schemas.Report)
-def get_report(
-    report_id: int,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    report = db.query(models.Report).filter(
-        models.Report.id == report_id,
-        models.Report.user_id == current_user.id
-    ).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return report
-
-@app.put("/reports/{report_id}", response_model=schemas.Report)
-def update_report(
-    report_id: int,
-    report_update: schemas.ReportUpdate,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    report = db.query(models.Report).filter(
-        models.Report.id == report_id,
-        models.Report.user_id == current_user.id
-    ).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    
-    for key, value in report_update.dict(exclude_unset=True).items():
-        setattr(report, key, value)
-    
-    db.commit()
-    db.refresh(report)
-    return report
-
-@app.delete("/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_report(
-    report_id: int,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    report = db.query(models.Report).filter(
-        models.Report.id == report_id,
-        models.Report.user_id == current_user.id
-    ).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    
-    db.delete(report)
-    db.commit()
-    return None
-
-# Agent endpoints - for field agents to see and verify reports
-@app.get("/agent/reports", response_model=List[schemas.ReportWithUser])
-def get_all_reports_for_agent(
-    skip: int = 0,
-    limit: int = 100,
-    status: str = None,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get all reports for agents to verify. Only accessible by agents and admins."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
-    
-    try:
-        query = db.query(models.Report).options(
-            joinedload(models.Report.user)
-        )
-        
-        if status:
-            query = query.filter(models.Report.status == status)
-        
-        # Order by newest first
-        query = query.order_by(models.Report.created_at.desc())
-        reports = query.offset(skip).limit(limit).all()
-        return reports
-    except Exception as e:
-        import traceback
-        print(f"Error fetching agent reports: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+# User Reports
+@app.post("/reports", response_model=schemas.Report, status_code=status.HTTP_201_CREATED)
+async def create_report(report: schemas.ReportCreate, current_user: schemas.User = Depends(auth.get_current_user)):
+    new_report = report.dict()
+    new_report.update({
+        "user_id": current_user.id,
+        "status": ReportStatus.PENDING,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    })
+    res = await db.reports.insert_one(new_report)
+    await db.users.update_one({"_id": ObjectId(current_user.id)}, {"$inc": {"points": 10}})
+    new_report["id"] = str(res.inserted_id)
+    return new_report
+
+@app.get("/reports", response_model=List[schemas.Report])
+async def get_reports(skip: int = 0, limit: int = 100, status: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
+    query = {"user_id": current_user.id}
+    if status: query["status"] = status
+    cursor = db.reports.find(query).skip(skip).limit(limit)
+    return [fix_id(r) for r in await cursor.to_list(length=limit)]
+
+@app.get("/reports/{report_id}", response_model=schemas.Report)
+async def get_report(report_id: str, current_user: schemas.User = Depends(auth.get_current_user)):
+    if not ObjectId.is_valid(report_id): raise HTTPException(status_code=400, detail="Invalid ID")
+    report = await db.reports.find_one({"_id": ObjectId(report_id), "user_id": current_user.id})
+    if not report: raise HTTPException(status_code=404, detail="Report not found")
+    return fix_id(report)
+
+@app.put("/reports/{report_id}", response_model=schemas.Report)
+async def update_report(report_id: str, report_update: schemas.ReportUpdate, current_user: schemas.User = Depends(auth.get_current_user)):
+    if not ObjectId.is_valid(report_id): raise HTTPException(status_code=400, detail="Invalid ID")
+    update_data = report_update.dict(exclude_unset=True)
+    update_data["updated_at"] = datetime.utcnow()
+    
+    res = await db.reports.update_one({"_id": ObjectId(report_id), "user_id": current_user.id}, {"$set": update_data})
+    if res.matched_count == 0: raise HTTPException(status_code=404, detail="Report not found")
+    return fix_id(await db.reports.find_one({"_id": ObjectId(report_id)}))
+
+@app.delete("/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_report(report_id: str, current_user: schemas.User = Depends(auth.get_current_user)):
+    if not ObjectId.is_valid(report_id): raise HTTPException(status_code=400, detail="Invalid ID")
+    res = await db.reports.delete_one({"_id": ObjectId(report_id), "user_id": current_user.id})
+    if res.deleted_count == 0: raise HTTPException(status_code=404, detail="Report not found")
+    return None
+
+# Agent Endpoints
+@app.get("/agent/reports", response_model=List[schemas.ReportWithUser])
+async def get_all_reports_for_agent(skip: int = 0, limit: int = 100, status: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    
+    match = {"status": status} if status else {}
+    pipeline = [
+        {"$match": match}, {"$sort": {"created_at": -1}}, {"$skip": skip}, {"$limit": limit},
+        {"$addFields": {"userObjectId": {"$toObjectId": "$user_id"}}},
+        {"$lookup": {"from": "users", "localField": "userObjectId", "foreignField": "_id", "as": "user_info"}},
+        {"$unwind": "$user_info"},
+        {"$project": {"userObjectId": 0, "user_info.hashed_password": 0}}
+    ]
+    results = await db.reports.aggregate(pipeline).to_list(length=limit)
+    return [fix_id({**r, "user": fix_id(r["user_info"])}) for r in results]
+
 @app.get("/agent/reports/{report_id}", response_model=schemas.ReportWithUser)
-def get_report_for_agent(
-    report_id: int,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get a specific report with user info. Only accessible by agents and admins."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
+async def get_report_for_agent(report_id: str, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    if not ObjectId.is_valid(report_id): raise HTTPException(status_code=400, detail="Invalid ID")
     
-    report = db.query(models.Report).options(
-        joinedload(models.Report.user)
-    ).filter(models.Report.id == report_id).first()
-    
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return report
+    pipeline = [
+        {"$match": {"_id": ObjectId(report_id)}},
+        {"$addFields": {"userObjectId": {"$toObjectId": "$user_id"}}},
+        {"$lookup": {"from": "users", "localField": "userObjectId", "foreignField": "_id", "as": "user_info"}},
+        {"$unwind": "$user_info"},
+        {"$project": {"userObjectId": 0, "user_info.hashed_password": 0}}
+    ]
+    results = await db.reports.aggregate(pipeline).to_list(length=1)
+    if not results: raise HTTPException(status_code=404, detail="Report not found")
+    r = results[0]
+    return fix_id({**r, "user": fix_id(r["user_info"])})
 
 @app.put("/agent/reports/{report_id}/verify", response_model=schemas.Report)
-def verify_report(
-    report_id: int,
-    verification: schemas.ReportUpdate,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Verify/update a report status. Only accessible by agents and admins."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
+async def verify_report(report_id: str, verification: schemas.ReportUpdate, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    if not ObjectId.is_valid(report_id): raise HTTPException(status_code=400, detail="Invalid ID")
     
-    report = db.query(models.Report).filter(models.Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    update_data = verification.dict(exclude_unset=True)
+    if verification.status == ReportStatus.VERIFIED: update_data["verified_at"] = datetime.utcnow()
     
-    for key, value in verification.dict(exclude_unset=True).items():
-        # Handle Enum values
-        if hasattr(value, 'value'):
-            value = value.value
-        setattr(report, key, value)
-    
-    # If status is verified, set verified_at
-    if verification.status == models.ReportStatus.VERIFIED:
-        report.verified_at = datetime.utcnow()
-    
-    db.commit()
-    db.refresh(report)
-    return report
+    res = await db.reports.update_one({"_id": ObjectId(report_id)}, {"$set": update_data})
+    if res.matched_count == 0: raise HTTPException(status_code=404, detail="Report not found")
+    return fix_id(await db.reports.find_one({"_id": ObjectId(report_id)}))
 
 @app.get("/agent/stats")
-def get_agent_stats(
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get statistics for the agent dashboard."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
+async def get_agent_stats(current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
     
-    from datetime import datetime, timedelta
-    from sqlalchemy import func
-    
-    # Total pending reports
-    pending_count = db.query(models.Report).filter(
-        models.Report.status == models.ReportStatus.PENDING
-    ).count()
-    
-    # Reports created today
-    today = datetime.utcnow().date()
-    today_count = db.query(models.Report).filter(
-        func.date(models.Report.created_at) == today
-    ).count()
-    
-    # Total reports
-    total_count = db.query(models.Report).count()
-    
-    # Resolved reports
-    resolved_count = db.query(models.Report).filter(
-        models.Report.status == models.ReportStatus.RESOLVED
-    ).count()
-    
+    today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
     return {
-        "pending": pending_count,
-        "today": today_count,
-        "total": total_count,
-        "resolved": resolved_count
+        "pending": await db.reports.count_documents({"status": ReportStatus.PENDING}),
+        "today": await db.reports.count_documents({"created_at": {"$gte": today_start}}),
+        "total": await db.reports.count_documents({}),
+        "resolved": await db.reports.count_documents({"status": ReportStatus.RESOLVED})
     }
 
-# Agent Notification endpoints
 @app.get("/agent/notifications", response_model=List[schemas.Notification])
-def get_agent_notifications(
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get notifications for the current agent."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
-    
-    notifications = db.query(models.Notification).filter(
-        models.Notification.user_id == current_user.id
-    ).order_by(models.Notification.created_at.desc()).limit(50).all()
-    
-    return notifications
+async def get_agent_notifications(current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    cursor = db.notifications.find({"user_id": current_user.id}).sort("created_at", -1).limit(50)
+    return [fix_id(n) for n in await cursor.to_list(length=50)]
 
 @app.get("/agent/notifications/unread-count")
-def get_unread_notification_count(
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get count of unread notifications for the current agent."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
-    
-    count = db.query(models.Notification).filter(
-        models.Notification.user_id == current_user.id,
-        models.Notification.is_read == 0
-    ).count()
-    
+async def get_unread_notification_count(current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    count = await db.notifications.count_documents({"user_id": current_user.id, "is_read": 0})
     return {"unread_count": count}
 
 @app.put("/agent/notifications/{notification_id}/read")
-def mark_notification_as_read(
-    notification_id: int,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Mark a notification as read."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
-    
-    notification = db.query(models.Notification).filter(
-        models.Notification.id == notification_id,
-        models.Notification.user_id == current_user.id
-    ).first()
-    
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification not found")
-    
-    notification.is_read = 1
-    db.commit()
-    
-    return {"message": "Notification marked as read"}
+async def mark_notification_as_read(notification_id: str, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    if not ObjectId.is_valid(notification_id): raise HTTPException(status_code=400, detail="Invalid ID")
+    await db.notifications.update_one({"_id": ObjectId(notification_id), "user_id": current_user.id}, {"$set": {"is_read": 1}})
+    return {"message": "Marked as read"}
 
 @app.put("/agent/notifications/mark-all-read")
-def mark_all_notifications_as_read(
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Mark all notifications as read for the current agent."""
-    if current_user.role not in [models.UserRole.agent, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Agent role required.")
-    
-    db.query(models.Notification).filter(
-        models.Notification.user_id == current_user.id,
-        models.Notification.is_read == 0
-    ).update({"is_read": 1})
-    db.commit()
-    
-    return {"message": "All notifications marked as read"}
+async def mark_all_notifications_as_read(current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.agent, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    await db.notifications.update_many({"user_id": current_user.id, "is_read": 0}, {"$set": {"is_read": 1}})
+    return {"message": "All marked as read"}
 
-# Municipal Authority endpoints
-@app.post("/init-municipal")
-def init_municipal(db: Session = Depends(get_db)):
-    """Initialize municipal authority user."""
-    # Check if municipal user already exists
-    municipal = db.query(models.User).filter(models.User.email == "municipal@bilagh.dz").first()
-    if municipal:
-        return {"message": "Municipal user already exists", "email": municipal.email}
-    
-    # Create municipal user
-    hashed_password = auth.get_password_hash("municipal123")
-    municipal = models.User(
-        email="municipal@bilagh.dz",
-        username="municipal_authority",
-        full_name="Municipal Authority",
-        phone="+213555000000",
-        hashed_password=hashed_password,
-        role="municipal",
-        points=0
-    )
-    db.add(municipal)
-    db.commit()
-    db.refresh(municipal)
-    return {"message": "Municipal user created successfully", "email": municipal.email, "role": municipal.role}
-
+# Municipal Endpoints
 @app.get("/municipal/reports", response_model=List[schemas.ReportWithUser])
-def get_verified_reports_for_municipal(
-    skip: int = 0,
-    limit: int = 100,
-    status: str = None,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get all verified reports for municipal to approve/reject. Only accessible by municipal and admins."""
-    if current_user.role not in [models.UserRole.municipal, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Municipal role required.")
+async def get_verified_reports_for_municipal(skip: int = 0, limit: int = 100, status: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
     
-    query = db.query(models.Report).options(
-        joinedload(models.Report.user)
-    )
-    
-    if status:
-        query = query.filter(models.Report.status == status)
-    else:
-        # By default, show verified reports awaiting municipal action
-        query = query.filter(models.Report.status.in_([
-            models.ReportStatus.VERIFIED,
-            models.ReportStatus.APPROVED,
-            models.ReportStatus.ASSIGNED
-        ]))
-    
-    query = query.order_by(models.Report.updated_at.desc())
-    reports = query.offset(skip).limit(limit).all()
-    return reports
-
-@app.get("/municipal/all-reports", response_model=List[schemas.ReportWithUser])
-def get_all_reports_for_municipal(
-    skip: int = 0,
-    limit: int = 100,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get all reports for municipal overview. Only accessible by municipal and admins."""
-    if current_user.role not in [models.UserRole.municipal, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Municipal role required.")
-    
-    query = db.query(models.Report).options(
-        joinedload(models.Report.user)
-    ).order_by(models.Report.created_at.desc())
-    
-    reports = query.offset(skip).limit(limit).all()
-    return reports
+    statuses = [status] if status else [ReportStatus.VERIFIED, ReportStatus.APPROVED, ReportStatus.ASSIGNED]
+    pipeline = [
+        {"$match": {"status": {"$in": statuses}}}, {"$sort": {"updated_at": -1}}, {"$skip": skip}, {"$limit": limit},
+        {"$addFields": {"userObjectId": {"$toObjectId": "$user_id"}}},
+        {"$lookup": {"from": "users", "localField": "userObjectId", "foreignField": "_id", "as": "user_info"}},
+        {"$unwind": "$user_info"}, {"$project": {"userObjectId": 0, "user_info.hashed_password": 0}}
+    ]
+    results = await db.reports.aggregate(pipeline).to_list(length=limit)
+    return [fix_id({**r, "user": fix_id(r["user_info"])}) for r in results]
 
 @app.put("/municipal/reports/{report_id}/approve")
-def approve_report(
-    report_id: int,
-    notes: Optional[str] = None,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Approve a verified report. Only accessible by municipal and admins."""
-    if current_user.role not in [models.UserRole.municipal, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Municipal role required.")
+async def approve_report(report_id: str, notes: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    if not ObjectId.is_valid(report_id): raise HTTPException(status_code=400, detail="Invalid ID")
     
-    report = db.query(models.Report).filter(models.Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    upd = {"status": ReportStatus.APPROVED, "municipal_notes": notes, "approved_at": datetime.utcnow()}
+    res = await db.reports.update_one({"_id": ObjectId(report_id)}, {"$set": upd})
+    if res.matched_count == 0: raise HTTPException(status_code=404, detail="Report not found")
     
-    from datetime import datetime
-    report.status = "approved"  # Use lowercase string for database compatibility
-    report.municipal_notes = notes
-    report.approved_at = datetime.utcnow()
-    
-    # Create notification for all agents
-    agents = db.query(models.User).filter(models.User.role == models.UserRole.agent).all()
-    for agent in agents:
-        notification = models.Notification(
-            user_id=agent.id,
-            title="Report Approved",
-            message=f"Report #{report.id} ({report.type}) at {report.location} has been approved by municipal.",
-            type="info",
-            report_id=report.id
-        )
-        db.add(notification)
-    
-    db.commit()
-    db.refresh(report)
-    return {"message": "Report approved successfully", "report_id": report.id, "status": report.status.value}
+    # Notifications
+    agents = await db.users.find({"role": UserRole.agent}).to_list(length=100)
+    notifs = [{
+        "user_id": str(a["_id"]), "title": "Report Approved", "message": f"Report has been approved.",
+        "type": "info", "report_id": report_id, "is_read": 0, "created_at": datetime.utcnow()
+    } for a in agents]
+    if notifs: await db.notifications.insert_many(notifs)
+    return {"message": "Approved"}
 
 @app.put("/municipal/reports/{report_id}/reject")
-def reject_report(
-    report_id: int,
-    notes: Optional[str] = None,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Reject a report. Only accessible by municipal and admins."""
-    if current_user.role not in [models.UserRole.municipal, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Municipal role required.")
+async def reject_report(report_id: str, notes: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    if not ObjectId.is_valid(report_id): raise HTTPException(status_code=400, detail="Invalid ID")
     
-    report = db.query(models.Report).filter(models.Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    upd = {"status": ReportStatus.REJECTED, "municipal_notes": notes}
+    res = await db.reports.update_one({"_id": ObjectId(report_id)}, {"$set": upd})
+    if res.matched_count == 0: raise HTTPException(status_code=404, detail="Report not found")
     
-    report.status = "rejected"  # Use lowercase string for database compatibility
-    report.municipal_notes = notes
-    
-    # Create notification for all agents
-    agents = db.query(models.User).filter(models.User.role == models.UserRole.agent).all()
-    for agent in agents:
-        notification = models.Notification(
-            user_id=agent.id,
-            title="Report Rejected",
-            message=f"Report #{report.id} ({report.type}) at {report.location} has been rejected by municipal." + (f" Reason: {notes}" if notes else ""),
-            type="alert",
-            report_id=report.id
-        )
-        db.add(notification)
-    
-    db.commit()
-    db.refresh(report)
-    return {"message": "Report rejected", "report_id": report.id, "status": report.status.value}
+    agents = await db.users.find({"role": UserRole.agent}).to_list(length=100)
+    notifs = [{
+        "user_id": str(a["_id"]), "title": "Report Rejected", "message": f"Report rejected. {notes or ''}",
+        "type": "alert", "report_id": report_id, "is_read": 0, "created_at": datetime.utcnow()
+    } for a in agents]
+    if notifs: await db.notifications.insert_many(notifs)
+    return {"message": "Rejected"}
 
 @app.put("/municipal/reports/{report_id}/assign")
-def assign_report_to_agent(
-    report_id: int,
-    agent_id: int,
-    notes: Optional[str] = None,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Assign an approved report to an agent for repair. Only accessible by municipal and admins."""
-    if current_user.role not in [models.UserRole.municipal, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Municipal role required.")
+async def assign_report(report_id: str, agent_id: str, notes: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    if not ObjectId.is_valid(report_id) or not ObjectId.is_valid(agent_id): raise HTTPException(status_code=400, detail="Invalid ID")
     
-    report = db.query(models.Report).filter(models.Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    agent = await db.users.find_one({"_id": ObjectId(agent_id), "role": UserRole.agent})
+    if not agent: raise HTTPException(status_code=404, detail="Agent not found")
     
-    # Verify the agent exists and has agent role
-    agent = db.query(models.User).filter(models.User.id == agent_id).first()
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.role != models.UserRole.agent:
-        raise HTTPException(status_code=400, detail="User is not an agent")
+    upd = {"status": ReportStatus.ASSIGNED, "assigned_agent_id": agent_id, "municipal_notes": notes}
+    res = await db.reports.update_one({"_id": ObjectId(report_id)}, {"$set": upd})
+    if res.matched_count == 0: raise HTTPException(status_code=404, detail="Report not found")
     
-    report.status = "assigned"  # Use lowercase string for database compatibility
-    report.assigned_agent_id = agent_id
-    if notes:
-        report.municipal_notes = notes
-    
-    # Create notification for the agent
-    notification = models.Notification(
-        user_id=agent_id,
-        title="New Task Assigned",
-        message=f"You have been assigned a new repair task: {report.type} at {report.location}",
-        type="task",
-        report_id=report.id
-    )
-    db.add(notification)
-    
-    db.commit()
-    db.refresh(report)
-    return {
-        "message": "Report assigned to agent successfully", 
-        "report_id": report.id, 
-        "assigned_agent": agent.full_name or agent.username,
-        "status": report.status.value
-    }
+    await db.notifications.insert_one({
+        "user_id": agent_id, "title": "New Task", "message": "You have a new assignment.",
+        "type": "task", "report_id": report_id, "is_read": 0, "created_at": datetime.utcnow()
+    })
+    return {"message": "Assigned"}
 
 @app.get("/municipal/agents")
-def get_available_agents(
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get list of available agents for task assignment. Only accessible by municipal and admins."""
-    if current_user.role not in [models.UserRole.municipal, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Municipal role required.")
-    
-    agents = db.query(models.User).filter(models.User.role == models.UserRole.agent).all()
-    return [{"id": a.id, "name": a.full_name or a.username, "email": a.email} for a in agents]
+async def get_available_agents(current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    agents = await db.users.find({"role": UserRole.agent}).to_list(length=100)
+    return [{"id": str(a["_id"]), "name": a.get("full_name", a["username"]), "email": a["email"]} for a in agents]
 
 @app.get("/municipal/stats")
-def get_municipal_stats(
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get statistics for municipal dashboard. Only accessible by municipal and admins."""
-    if current_user.role not in [models.UserRole.municipal, models.UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Not authorized. Municipal role required.")
-    
-    from sqlalchemy import func
-    
-    stats = {
-        "total": db.query(models.Report).count(),
-        "pending": db.query(models.Report).filter(models.Report.status == models.ReportStatus.PENDING).count(),
-        "verified": db.query(models.Report).filter(models.Report.status == models.ReportStatus.VERIFIED).count(),
-        "approved": db.query(models.Report).filter(models.Report.status == models.ReportStatus.APPROVED).count(),
-        "rejected": db.query(models.Report).filter(models.Report.status == models.ReportStatus.REJECTED).count(),
-        "assigned": db.query(models.Report).filter(models.Report.status == models.ReportStatus.ASSIGNED).count(),
-        "in_progress": db.query(models.Report).filter(models.Report.status == models.ReportStatus.IN_PROGRESS).count(),
-        "resolved": db.query(models.Report).filter(models.Report.status == models.ReportStatus.RESOLVED).count(),
+async def get_municipal_stats(current_user: schemas.User = Depends(auth.get_current_user)):
+    if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    return {
+        "total": await db.reports.count_documents({}),
+        "pending": await db.reports.count_documents({"status": ReportStatus.PENDING}),
+        "verified": await db.reports.count_documents({"status": ReportStatus.VERIFIED}),
+        "approved": await db.reports.count_documents({"status": ReportStatus.APPROVED}),
+        "rejected": await db.reports.count_documents({"status": ReportStatus.REJECTED}),
+        "assigned": await db.reports.count_documents({"status": ReportStatus.ASSIGNED}),
+        "in_progress": await db.reports.count_documents({"status": ReportStatus.IN_PROGRESS}),
+        "resolved": await db.reports.count_documents({"status": ReportStatus.RESOLVED})
     }
-    
-    return stats
 
-# Prediction endpoints
+# AI Endpoints
 @app.post("/predict")
-async def predict_damage(
-    file: UploadFile = File(...)
-):
-    """
-    Analyze an uploaded image for road damage using the ML model.
-    Returns damage type, severity, and confidence levels.
-    """
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
-    
-    try:
-        # Read image data
-        image_data = await file.read()
-        
-        # Perform prediction
-        result = predict.predict_damage(image_data)
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-
+async def predict_damage(file: UploadFile = File(...)):
+    if not file.content_type.startswith("image/"): raise HTTPException(status_code=400, detail="Image required")
+    try: return predict.predict_damage(await file.read())
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/predict/model-info")
 def get_model_info():
-    """
-    Get information about the loaded ML model.
-    """
     return predict.get_model_info()
 
+@app.post("/analyze-geometry")
+async def analyze_road_damage_geometry(file: UploadFile = File(...)):
+    if not file.content_type.startswith("image/"): raise HTTPException(status_code=400, detail="Image required")
+    try: return geometric_analysis.analyze_road_damage_geometry(await file.read())
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-# Health check
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+@app.post("/assess-risk")
+async def assess_road_damage_risk(
+    damage_type: str, length_cm: float, width_cm: float, depth_cm: float, 
+    road_type: str = "secondary", material: str = "asphalt", 
+    volume_cm3: Optional[float] = None, severity_score: Optional[float] = None
+):
+    return risk_assessment.assess_risk(damage_type, length_cm, width_cm, depth_cm, volume_cm3, road_type, material, severity_score)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.post("/analyze-complete")
+async def complete_analysis(file: UploadFile = File(...), road_type: str = "secondary", material: str = "asphalt"):
+    if not file.content_type.startswith("image/"): raise HTTPException(status_code=400, detail="Image required")
+    try:
+        content = await file.read()
+        geo = geometric_analysis.analyze_road_damage_geometry(content)
+        if not geo.get("success") or not geo.get("detected"):
+            return {"success": False, "detected": False, "message": "No damage", "geometry": geo, "risk_assessment": None}
+        
+        m = geo.get("measurements", {})
+        risk = risk_assessment.assess_risk(
+            geo.get("damage_type", "unknown"), m.get("length_cm", 0), m.get("width_cm", 0), m.get("estimated_depth_cm", 0),
+            m.get("approx_volume_cm3"), road_type, material, geo.get("confidence", 0)
+        )
+        return {"success": True, "detected": True, "damage_type": geo.get("damage_type"), "geometry": geo, "risk_assessment": risk}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/analyze-complete-url")
+async def complete_analysis_by_url(image_url: str, road_type: str = "secondary", material: str = "asphalt"):
+    """
+    Analyze road damage from an image URL (used by agent verification screen).
+    Downloads the image and performs geometric + risk analysis.
+    """
+    import httpx
+    
+    if not image_url:
+        raise HTTPException(status_code=400, detail="image_url is required")
+    
+    try:
+        # Download the image
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(image_url)
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Failed to download image: HTTP {response.status_code}")
+            content = response.content
+        
+        # Perform analysis
+        geo = geometric_analysis.analyze_road_damage_geometry(content)
+        if not geo.get("success") or not geo.get("detected"):
+            return {"success": False, "detected": False, "message": "No damage detected", "geometry": geo, "risk_assessment": None}
+        
+        m = geo.get("measurements", {})
+        risk = risk_assessment.assess_risk(
+            geo.get("damage_type", "unknown"), 
+            m.get("length_cm", 0), 
+            m.get("width_cm", 0), 
+            m.get("estimated_depth_cm", 0),
+            m.get("approx_volume_cm3"), 
+            road_type, 
+            material, 
+            geo.get("confidence", 0)
+        )
+        return {
+            "success": True, 
+            "detected": True, 
+            "damage_type": geo.get("damage_type"), 
+            "geometry": geo, 
+            "risk_assessment": risk
+        }
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to download image: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Vercel serverless handler
+handler = app
 

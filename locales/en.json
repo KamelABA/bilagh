@@ -170,7 +170,9 @@
         "roadInGoodCondition": "Great news! The AI analysis indicates this road section appears to be in good condition with no significant damage detected.",
         "tipClearPhoto": "Take a clear, focused photo of the road",
         "tipGoodLighting": "Ensure good lighting conditions",
-        "tipFocusOnDamage": "Focus on the damaged area of the road"
+        "tipFocusOnDamage": "Focus on the damaged area of the road",
+        "flip": "Flip",
+        "gallery": "Gallery"
     },
     "map": {
         "roadDamageMap": "Road Damage Map",
@@ -310,7 +312,44 @@
         "reportedPhoto": "Reported Photo",
         "aiDetected": "AI Detected",
         "openInMaps": "Open in Maps",
-        "noNotifications": "No notifications yet"
+        "noNotifications": "No notifications yet",
+        "aiAnalysis": "AI Analysis",
+        "runAiAnalysis": "Run AI Analysis",
+        "analyzingDamage": "Analyzing Damage...",
+        "analysisComplete": "Analysis Complete",
+        "riskAssessment": "Risk Assessment",
+        "riskIndex": "Risk Index",
+        "urgency": "Urgency",
+        "priority": "Priority",
+        "measurements": "Measurements",
+        "length": "Length",
+        "width": "Width",
+        "depth": "Depth (estimated)",
+        "surfaceArea": "Surface Area",
+        "volume": "Volume",
+        "recommendations": "Recommendations",
+        "limitations": "Analysis Limitations",
+        "urgencyLow": "Low",
+        "urgencyMedium": "Medium",
+        "urgencyHigh": "High",
+        "urgencyCritical": "Critical",
+        "priorityImmediate": "P1 - Immediate (24-48h)",
+        "priorityUrgent": "P2 - Urgent (1 week)",
+        "priorityScheduled": "P3 - Scheduled (30 days)",
+        "priorityRoutine": "P4 - Routine",
+        "priorityMonitor": "P5 - Monitor",
+        "confidence": "Confidence",
+        "roadType": "Road Type",
+        "roadMain": "Main Road",
+        "roadSecondary": "Secondary Road",
+        "roadResidential": "Residential Street",
+        "material": "Road Material",
+        "materialAsphalt": "Asphalt",
+        "materialConcrete": "Concrete",
+        "selectRoadType": "Select Road Type",
+        "selectMaterial": "Select Material",
+        "analysisError": "Analysis failed. Please try again.",
+        "noImageToAnalyze": "No image available for analysis"
     },
     "municipal": {
         "dashboard": "Dashboard",
@@ -357,5 +396,41 @@
         "manageAgents": "Manage field agents",
         "noAgents": "No agents available",
         "active": "Active"
+    },
+    "feedback": {
+        "title": "Help Improve Detection",
+        "selectFeedback": "What's Wrong?",
+        "possibleReasons": "Possible Reasons for Uncertainty",
+        "submit": "Submit Feedback",
+        "categories": {
+            "wrongType": "Wrong Damage Type",
+            "measurement": "Size/Measurement Issues",
+            "imageQuality": "Image Quality",
+            "perspective": "Camera/Scale Problems",
+            "confusion": "Misidentified Object",
+            "uncertainty": "Uncertain Detection"
+        },
+        "options": {
+            "notActualDamage": "This is not road damage",
+            "differentDamageType": "It's a different type of damage",
+            "damageSmallerThanShown": "Damage is smaller than shown",
+            "damageLargerThanShown": "Damage is larger than shown",
+            "imageBlurry": "Image is blurry or unclear",
+            "poorLighting": "Poor lighting affected detection",
+            "shadowMistaken": "Shadow was mistaken for damage",
+            "objectMistaken": "Object was mistaken for damage",
+            "modelUnsure": "Model seems uncertain"
+        },
+        "explanations": {
+            "noDamageDetected": "No road damage was detected in this image.",
+            "damageDetected": "Detected {type} with {confidence}% confidence ({severity} severity)."
+        },
+        "reasons": {
+            "lowConfidence": "Detection confidence is below 50%",
+            "moderateConfidence": "Detection confidence is moderate (50-70%)",
+            "multipleDetections": "Multiple damage areas detected",
+            "smallDamageArea": "Detected damage area is relatively small",
+            "generalUncertainty": "AI may benefit from your feedback"
+        }
     }
 }

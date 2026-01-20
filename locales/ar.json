@@ -170,7 +170,9 @@
         "roadInGoodCondition": "أخبار رائعة! يشير تحليل الذكاء الاصطناعي إلى أن هذا الجزء من الطريق يبدو في حالة جيدة دون ضرر كبير.",
         "tipClearPhoto": "التقط صورة واضحة ومركزة للطريق",
         "tipGoodLighting": "تأكد من وجود إضاءة جيدة",
-        "tipFocusOnDamage": "ركز على المنطقة المتضررة من الطريق"
+        "tipFocusOnDamage": "ركز على المنطقة المتضررة من الطريق",
+        "flip": "قلب",
+        "gallery": "المعرض"
     },
     "map": {
         "roadDamageMap": "خريطة أضرار الطرق",
@@ -310,7 +312,44 @@
         "reportedPhoto": "الصورة المبلغ عنها",
         "aiDetected": "تم الكشف بالذكاء الاصطناعي",
         "openInMaps": "فتح في الخريطة",
-        "noNotifications": "لا توجد إشعارات حتى الآن"
+        "noNotifications": "لا توجد إشعارات حتى الآن",
+        "aiAnalysis": "تحليل الذكاء الاصطناعي",
+        "runAiAnalysis": "تشغيل تحليل AI",
+        "analyzingDamage": "جاري تحليل الضرر...",
+        "analysisComplete": "اكتمل التحليل",
+        "riskAssessment": "تقييم المخاطر",
+        "riskIndex": "مؤشر الخطر",
+        "urgency": "الإلحاح",
+        "priority": "الأولوية",
+        "measurements": "القياسات",
+        "length": "الطول",
+        "width": "العرض",
+        "depth": "العمق (تقديري)",
+        "surfaceArea": "مساحة السطح",
+        "volume": "الحجم",
+        "recommendations": "التوصيات",
+        "limitations": "قيود التحليل",
+        "urgencyLow": "منخفض",
+        "urgencyMedium": "متوسط",
+        "urgencyHigh": "عالي",
+        "urgencyCritical": "حرج",
+        "priorityImmediate": "أ1 - فوري (24-48 ساعة)",
+        "priorityUrgent": "أ2 - عاجل (أسبوع)",
+        "priorityScheduled": "أ3 - مجدول (30 يوم)",
+        "priorityRoutine": "أ4 - روتيني",
+        "priorityMonitor": "أ5 - مراقبة",
+        "confidence": "درجة الثقة",
+        "roadType": "نوع الطريق",
+        "roadMain": "طريق رئيسي",
+        "roadSecondary": "طريق ثانوي",
+        "roadResidential": "شارع سكني",
+        "material": "مادة الطريق",
+        "materialAsphalt": "أسفلت",
+        "materialConcrete": "خرسانة",
+        "selectRoadType": "اختر نوع الطريق",
+        "selectMaterial": "اختر المادة",
+        "analysisError": "فشل التحليل. حاول مرة أخرى.",
+        "noImageToAnalyze": "لا توجد صورة للتحليل"
     },
     "municipal": {
         "dashboard": "لوحة التحكم",
@@ -357,5 +396,41 @@
         "manageAgents": "إدارة الوكلاء الميدانيين",
         "noAgents": "لا يوجد وكلاء متاحين",
         "active": "نشط"
+    },
+    "feedback": {
+        "title": "ساعد في تحسين الكشف",
+        "selectFeedback": "ما الخطأ؟",
+        "possibleReasons": "أسباب محتملة لعدم اليقين",
+        "submit": "إرسال الملاحظات",
+        "categories": {
+            "wrongType": "نوع الضرر خاطئ",
+            "measurement": "مشاكل الحجم/القياس",
+            "imageQuality": "جودة الصورة",
+            "perspective": "مشاكل الكاميرا/المقياس",
+            "confusion": "كائن محدد خطأً",
+            "uncertainty": "كشف غير مؤكد"
+        },
+        "options": {
+            "notActualDamage": "هذا ليس ضرراً في الطريق",
+            "differentDamageType": "إنه نوع مختلف من الضرر",
+            "damageSmallerThanShown": "الضرر أصغر مما يظهر",
+            "damageLargerThanShown": "الضرر أكبر مما يظهر",
+            "imageBlurry": "الصورة ضبابية أو غير واضحة",
+            "poorLighting": "الإضاءة السيئة أثرت على الكشف",
+            "shadowMistaken": "تم الخلط بين الظل والضرر",
+            "objectMistaken": "تم الخلط بين كائن والضرر",
+            "modelUnsure": "النموذج يبدو غير متأكد"
+        },
+        "explanations": {
+            "noDamageDetected": "لم يتم اكتشاف أي ضرر في الطريق في هذه الصورة.",
+            "damageDetected": "تم اكتشاف {type} بنسبة ثقة {confidence}% (خطورة {severity})."
+        },
+        "reasons": {
+            "lowConfidence": "نسبة الثقة في الكشف أقل من 50%",
+            "moderateConfidence": "نسبة الثقة في الكشف متوسطة (50-70%)",
+            "multipleDetections": "تم اكتشاف مناطق ضرر متعددة",
+            "smallDamageArea": "منطقة الضرر المكتشفة صغيرة نسبياً",
+            "generalUncertainty": "قد يستفيد الذكاء الاصطناعي من ملاحظاتك"
+        }
     }
 }
