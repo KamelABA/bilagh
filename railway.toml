@@ -1,8 +1,0 @@
-[build]
-builder = "dockerfile"
-dockerfilePath = "backend/Dockerfile"
-
-[deploy]
-healthcheckPath = "/"
-healthcheckTimeout = 300
-numReplicas = 1
