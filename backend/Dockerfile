@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the backend application
 COPY backend/ .
 
-# Use exec form with sh -c to properly expand environment variables
-CMD ["/bin/sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Use Python script to start (avoids shell expansion issues)
+CMD ["python", "start.py"]
