@@ -14,8 +14,8 @@ COPY backend/ .
 # Expose port
 EXPOSE 8000
 
-# Set environment variable for port
-ENV PORT=8000
+# Create startup script
+RUN echo '#!/bin/sh\npython -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}' > /start.sh && chmod +x /start.sh
 
-# Run the application with shell to expand $PORT
-CMD python -m uvicorn main:app --host 0.0.0.0 --port ${PORT}
+# Run the application
+CMD ["/bin/sh", "/start.sh"]
