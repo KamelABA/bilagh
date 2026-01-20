@@ -14,8 +14,12 @@ COPY backend/ .
 # Expose port
 EXPOSE 8000
 
-# Create startup script
-RUN echo '#!/bin/sh\npython -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}' > /start.sh && chmod +x /start.sh
+# Create simple startup script that prints environment and starts uvicorn
+# We use shell execution to ensure PORT is passed correctly
+RUN echo '#!/bin/sh\n\
+    echo "Starting application..."\n\
+    echo "PORT is set to: ${PORT}"\n\
+    exec python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}' > /start.sh && chmod +x /start.sh
 
-# Run the application
+# Run the startup script
 CMD ["/bin/sh", "/start.sh"]
