@@ -32,6 +32,7 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
 
 # typescript
 *.tsbuildinfo
@@ -41,3 +42,35 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Backend
+backend.log
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Large model files (should be downloaded separately or stored in cloud)
+*.keras
+*.pt
+*.h5
+*.pkl
+*.joblib
+
+# Cache
+.cache/
+
+# IDE
+.vscode/
+.idea/
