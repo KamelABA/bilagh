@@ -24,7 +24,7 @@
 
 ## What Remains (Production Files)
 
-### Backend (17 files)
+### Backend (16 files)
 ```
 ✓ main.py - Main API application
 ✓ auth.py - JWT authentication
@@ -36,7 +36,6 @@
 ✓ risk_assessment.py - Risk analysis
 ✓ cloudinary_config.py - Image storage
 ✓ Procfile - Railway deployment
-✓ Dockerfile - Container config
 ✓ requirements.txt - Python dependencies
 ✓ runtime.txt - Python version
 ✓ start.py - Startup script
@@ -114,7 +113,7 @@ eas build -p android  # Production APK
 ## Project Stats
 
 **Before:** 37+ backend files + large models + logs
-**After:** 17 essential production files
+**After:** 16 essential production files
 
 **Removed:** ~30MB of unnecessary files
 
