@@ -1,8 +1,8 @@
 import { Platform } from 'react-native';
 
 // API Configuration
-// Set this to your deployed backend URL (e.g., https://bilagh-api.onrender.com)
-const PRODUCTION_API_URL = 'https://bilagh-production.up.railway.app'; // Updated with Railway URL
+// Set this to your deployed backend URL (Railway)
+const PRODUCTION_API_URL = 'https://web-production-32b2a.up.railway.app';
 
 // For development: Use localhost for web, use your machine's IP for mobile devices
 const LOCAL_IP = '192.168.2.224';
@@ -11,7 +11,7 @@ const DEV_API_URL = Platform.OS === 'web'
     : `http://${LOCAL_IP}:8000`;
 
 // Use production URL if set, otherwise use development URL
-export const API_URL = PRODUCTION_API_URL || DEV_API_URL;
+export const API_URL = DEV_API_URL;  // Changed to DEV for testing updated model
 
 export const API_ENDPOINTS = {
     // Auth

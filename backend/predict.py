@@ -1,7 +1,8 @@
 """
 Road Damage Prediction Module
-Uses YOLOv8 for road damage detection with proper bounding boxes
-Includes RDD2020-style damage classification with area-based severity calculation
+HYBRID MODE: Keras (damage detection) + YOLO (type classification)
+- Keras: Trained on roads, detects if damage exists (yes/no)
+- YOLO: Classifies damage type (D00/D10/D20/D40)
 """
 
 import os
@@ -9,336 +10,261 @@ import numpy as np
 from PIL import Image
 import io
 
-# Try to import ultralytics (YOLO)
+# Use hybrid approach (best of both models)
 try:
-    from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except ImportError:
-    YOLO_AVAILABLE = False
-
-# Model configuration
-MODEL_DIR = os.path.dirname(os.path.dirname(__file__))
-YOLO_MODEL_PATH = os.path.join(MODEL_DIR, "road_damage_yolo.pt")
-
-# Severity calculation threshold
-# 20% of image area = maximum severity (1.0)
-AREA_THRESHOLD = 0.20
-
-# RDD2020 Damage class labels (standard road damage classes)
-DAMAGE_CLASSES = {
-    0: "D00",  # Longitudinal Crack
-    1: "D10",  # Transverse Crack
-    2: "D20",  # Alligator Crack
-    3: "D40",  # Pothole
-    4: "D50",  # Debris/Road Debris
-}
-
-DAMAGE_LABELS = {
-    "D00": "Longitudinal Crack",
-    "D10": "Transverse Crack", 
-    "D20": "Alligator Crack",
-    "D40": "Pothole",
-    "D50": "Road Debris",
-}
-
-DAMAGE_LABELS_AR = {
-    "D00": "شق طولي",
-    "D10": "شق عرضي",
-    "D20": "شق تمساحي",
-    "D40": "حفرة",
-    "D50": "حطام على الطريق",
-}
-
-# Global model variable
-_model = None
-
-
-def load_model():
-    """Load the YOLO model"""
-    global _model
+    from predict_hybrid import (
+        predict_damage,
+        get_model_info,
+        DAMAGE_CLASSES,
+        DAMAGE_LABELS,
+        DAMAGE_LABELS_AR
+    )
+    print("✓ Using HYBRID mode: Keras + YOLO")
+    print("  • Keras: Damage detection (binary)")
+    print("  • YOLO: Type classification")
+    HYBRID_MODE = True
+except ImportError as e:
+    print(f"✗ Hybrid mode failed: {e}")
+    print("  Falling back to YOLO-only mode...")
+    HYBRID_MODE = False
     
-    if not YOLO_AVAILABLE:
-        raise RuntimeError("Ultralytics YOLO is not installed. Please install it with: pip install ultralytics")
-    
-    if _model is None:
-        # Check if custom model exists, otherwise use pretrained YOLOv8
-        if os.path.exists(YOLO_MODEL_PATH):
-            print(f"Loading custom YOLO model from {YOLO_MODEL_PATH}...")
-            _model = YOLO(YOLO_MODEL_PATH)
-        else:
-            # Use YOLOv8n as base model - it will download automatically
-            print("Loading YOLOv8n base model for general object detection...")
-            print("Note: For best road damage detection, train a custom model on RDD2020 dataset")
-            _model = YOLO("yolov8n.pt")
-        print("Model loaded successfully!")
-    
-    return _model
-
-
-def calculate_severity_from_area(box_area: float, image_area: float) -> float:
-    """
-    Calculate severity score (0-1) based on bounding box area ratio
-    Uses THRESHOLD = 0.20 (20% of image area = max severity)
-    """
-    if image_area == 0:
-        return 0.0
-    area_ratio = box_area / image_area
-    severity_score = min(1.0, area_ratio / AREA_THRESHOLD)
-    return severity_score
-
-
-def get_severity_level(severity_score: float) -> str:
-    """Get severity level string from score"""
-    if severity_score < 0.33:
-        return "low"
-    elif severity_score < 0.66:
-        return "medium"
-    else:
-        return "high"
-
-
-def get_severity_color(severity_score: float) -> str:
-    """Get color hex based on severity score"""
-    if severity_score < 0.33:
-        return "#00FF00"  # Green
-    elif severity_score < 0.66:
-        return "#FFFF00"  # Yellow
-    else:
-        return "#FF0000"  # Red
-
-
-def predict_damage(image_data: bytes) -> dict:
-    """
-    Analyze an image and predict road damage with bounding boxes using YOLO
-    
-    Args:
-        image_data: Raw image bytes
-        
-    Returns:
-        Dictionary containing prediction results with bounding boxes
-    """
-    if not YOLO_AVAILABLE:
-        return create_mock_prediction()
-    
+    # Import YOLO for fallback
     try:
-        # Load model
-        model = load_model()
+        from ultralytics import YOLO
+        YOLO_AVAILABLE = True
+    except ImportError:
+        YOLO_AVAILABLE = False
+    
+    # Model configuration for fallback mode
+    MODEL_DIR = os.path.dirname(os.path.dirname(__file__))
+    YOLO_MODEL_PATH = os.path.join(MODEL_DIR, "road_damage_yolo.pt")
+    AREA_THRESHOLD = 0.20
+    
+    DAMAGE_CLASSES = {
+        0: "D00",
+        1: "D10",
+        2: "D20",
+        3: "D40",
+        4: "D50",
+    }
+    
+    DAMAGE_LABELS = {
+        "D00": "Longitudinal Crack",
+        "D10": "Transverse Crack", 
+        "D20": "Alligator Crack",
+        "D40": "Pothole",
+        "D50": "Road Debris",
+    }
+    
+    DAMAGE_LABELS_AR = {
+        "D00": "شق طولي",
+        "D10": "شق عرضي",
+        "D20": "شق تمساحي",
+        "D40": "حفرة",
+        "D50": "حطام على الطريق",
+    }
+    
+    _model = None
+    
+    def calculate_danger_level(damage_type: str, confidence: float) -> dict:
+        """
+        Calculate danger level (1-5) based on damage type and confidence.
         
-        # Load image
-        image = Image.open(io.BytesIO(image_data))
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
+        Danger Level Scale:
+        1 - Very Low: Minor cracks, low confidence
+        2 - Low: Small cracks, medium confidence
+        3 - Moderate: Significant cracks or small pothole
+        4 - High: Large cracks or medium pothole
+        5 - Critical: Large pothole, high confidence - immediate risk
         
-        orig_w, orig_h = image.size
-        image_area = orig_w * orig_h
+        Returns: dict with danger_level (1-5), danger_description, and danger_description_ar
+        """
+        # Base danger levels for each damage type
+        type_base_danger = {
+            "D00": 2,  # Longitudinal Crack - moderate concern
+            "D10": 2,  # Transverse Crack - moderate concern
+            "D20": 3,  # Alligator Crack - more serious (structural issue)
+            "D40": 4,  # Pothole - highest base danger
+            "D50": 2,  # Road Debris - moderate concern
+        }
         
-        # Run YOLO inference
-        results = model.predict(
-            source=image,
-            conf=0.25,  # Confidence threshold
-            iou=0.45,   # NMS IoU threshold
-            verbose=False
-        )
+        base_danger = type_base_danger.get(damage_type, 3)
         
-        # Process results
-        bounding_boxes = []
+        # Adjust based on confidence
+        if confidence > 0.80:
+            # Very confident detection - increase danger
+            danger_level = min(5, base_danger + 1)
+        elif confidence < 0.50:
+            # Low confidence - decrease danger
+            danger_level = max(1, base_danger - 1)
+        else:
+            danger_level = base_danger
         
-        if len(results) > 0 and results[0].boxes is not None:
-            boxes = results[0].boxes
+        # Descriptions for each danger level
+        danger_descriptions = {
+            1: {"en": "Very Low Risk", "ar": "خطر منخفض جداً"},
+            2: {"en": "Low Risk", "ar": "خطر منخفض"},
+            3: {"en": "Moderate Risk", "ar": "خطر متوسط"},
+            4: {"en": "High Risk", "ar": "خطر عالي"},
+            5: {"en": "Critical Risk - Immediate Attention Required", "ar": "خطر حرج - يتطلب اهتماماً فورياً"},
+        }
+        
+        desc = danger_descriptions.get(danger_level, danger_descriptions[3])
+        
+        return {
+            "danger_level": danger_level,
+            "danger_description": desc["en"],
+            "danger_description_ar": desc["ar"]
+        }
+    
+    
+    def get_damage_category(damage_type: str) -> dict:
+        """
+        Simplify damage type to either "Pothole" or "Crack"
+        
+        Returns: dict with category and category_ar
+        """
+        if damage_type == "D40":
+            return {
+                "category": "Pothole",
+                "category_ar": "حفرة"
+            }
+        else:
+            # D00, D10, D20, D50 are all crack/debris types (non-pothole)
+            return {
+                "category": "Crack",
+                "category_ar": "شق"
+            }
+    
+    
+    def calculate_danger_score(damage_type: str, detection_confidence: float) -> float:
+        """
+        Calculate how dangerous the damage is from 0.0 to 1.0
+        
+        This combines:
+        1. Damage type severity (potholes are more dangerous than cracks)
+        2. Detection confidence (higher confidence = we're sure it's dangerous)
+        
+        Returns: float from 0.0 (not dangerous) to 1.0 (extremely dangerous)
+        """
+        # Base danger scores for each damage type (0.0 to 1.0)
+        type_danger_scores = {
+            "D00": 0.3,  # Longitudinal Crack - low-moderate danger
+            "D10": 0.35, # Transverse Crack - low-moderate danger
+            "D20": 0.55, # Alligator Crack - moderate danger (structural issue)
+            "D40": 0.85, # Pothole - high danger (immediate hazard)
+            "D50": 0.25, # Road Debris - low danger
+        }
+        
+        base_score = type_danger_scores.get(damage_type, 0.5)
+        
+        # Adjust based on detection confidence
+        # Higher confidence means we're more certain about the danger
+        # Lower confidence reduces the danger score
+        danger_score = base_score * (0.5 + (detection_confidence * 0.5))
+        
+        # Cap between 0.0 and 1.0
+        danger_score = max(0.0, min(1.0, danger_score))
+        
+        return round(danger_score, 2)
+    
+    def load_model():
+        """Load YOLO model (fallback mode only)"""
+        global _model
+        if not YOLO_AVAILABLE:
+            raise RuntimeError("YOLOv8 not available")
+        if _model is None:
+            if os.path.exists(YOLO_MODEL_PATH):
+                _model = YOLO(YOLO_MODEL_PATH)
+            else:
+                _model = YOLO("yolov8n.pt")
+        return _model
+    
+    def predict_damage(image_data: bytes) -> dict:
+        """
+        Fallback prediction using YOLO only
+        """
+        if not YOLO_AVAILABLE:
+            return {
+                "success": False,
+                "detected": False,
+                "message": "No models available",
+                "error": "NO_MODELS"
+            }
+        
+        try:
+            model = load_model()
+            image = Image.open(io.BytesIO(image_data))
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
             
-            for i, box in enumerate(boxes):
-                # Get box coordinates (xyxy format)
+            orig_w, orig_h = image.size
+            results = model.predict(source=image, conf=0.40, verbose=False)
+            
+            if len(results) > 0 and results[0].boxes is not None and len(results[0].boxes) > 0:
+                box = results[0].boxes[0]
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                
-                # Get confidence and class
                 confidence = float(box.conf[0].cpu().numpy())
                 class_id = int(box.cls[0].cpu().numpy())
                 
-                # Calculate normalized coordinates
-                xc = ((x1 + x2) / 2) / orig_w
-                yc = ((y1 + y2) / 2) / orig_h
-                bw = (x2 - x1) / orig_w
-                bh = (y2 - y1) / orig_h
+                damage_class = DAMAGE_CLASSES.get(class_id % len(DAMAGE_CLASSES), "D40")
                 
-                # Calculate box area and severity
-                box_area = (x2 - x1) * (y2 - y1)
-                severity_score = calculate_severity_from_area(box_area, image_area)
-                severity_level = get_severity_level(severity_score)
+                # Calculate how dangerous the damage is (0.0 to 1.0)
+                danger_score = calculate_danger_score(damage_class, confidence)
                 
-                # Map class ID to damage class
-                # If using custom RDD model, use direct mapping
-                # If using general YOLO, simulate damage detection
-                damage_class = DAMAGE_CLASSES.get(class_id % 5, "D40")
+                # Calculate danger level (1-5 rating)
+                danger_info = calculate_danger_level(damage_class, confidence)
                 
-                bounding_boxes.append({
-                    "class": damage_class,
-                    "label": DAMAGE_LABELS.get(damage_class, "Road Damage"),
-                    "label_ar": DAMAGE_LABELS_AR.get(damage_class, "ضرر في الطريق"),
+                # Get simplified category
+                category_info = get_damage_category(damage_class)
+                
+                return {
+                    "success": True,
+                    "detected": True,
+                    "damage_type": damage_class,
+                    "damage_label": DAMAGE_LABELS[damage_class],
+                    "damage_label_ar": DAMAGE_LABELS_AR[damage_class],
+                    "damage_category": category_info["category"],
+                    "damage_category_ar": category_info["category_ar"],
                     "confidence": confidence,
-                    "severity_score": severity_score,
-                    "severity_level": severity_level,
-                    "color": get_severity_color(severity_score),
-                    "bbox": {
-                        "x1": x1,
-                        "y1": y1,
-                        "x2": x2,
-                        "y2": y2,
-                        "xc": xc,
-                        "yc": yc,
-                        "width": bw,
-                        "height": bh
-                    },
-                    "area_ratio": box_area / image_area if image_area > 0 else 0
-                })
-        
-        # Sort by severity score (highest first)
-        bounding_boxes.sort(key=lambda x: x["severity_score"], reverse=True)
-        
-        # Check if any road damage was detected
-        # For now, we consider any detection as potential road damage
-        # A properly trained RDD model would only detect damage classes
-        detected = len(bounding_boxes) > 0
-        
-        if detected:
-            primary_box = bounding_boxes[0]
-            
-            # Calculate overall severity (max severity among all detections)
-            max_severity = max(box["severity_score"] for box in bounding_boxes)
-            
-            result = {
-                "success": True,
-                "detected": True,
-                "damage_type": primary_box["class"],
-                "damage_label": primary_box["label"],
-                "damage_label_ar": primary_box["label_ar"],
-                "confidence": primary_box["confidence"],
-                "severity_score": max_severity,
-                "severity": get_severity_level(max_severity),
-                "color": get_severity_color(max_severity),
-                "bounding_boxes": bounding_boxes,
-                "image_size": {"width": orig_w, "height": orig_h},
-                "all_predictions": [
-                    {
-                        "class": box["class"],
-                        "label": box["label"],
-                        "confidence": box["confidence"],
-                        "severity": box["severity_score"]
-                    }
-                    for box in bounding_boxes
-                ],
-                "message": f"Road damage detected: {primary_box['label']} | Severity: {max_severity:.2f}"
-            }
-        else:
-            result = {
-                "success": True,
-                "detected": False,
-                "damage_type": None,
-                "damage_label": "No damage detected",
-                "damage_label_ar": "لم يتم اكتشاف ضرر",
-                "confidence": 0.0,
-                "severity_score": 0.0,
-                "severity": "none",
-                "color": "#00FF00",
-                "bounding_boxes": [],
-                "image_size": {"width": orig_w, "height": orig_h},
-                "all_predictions": [],
-                "message": "No significant road damage detected"
-            }
-        
-        return result
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {
-            "success": False,
-            "detected": False,
-            "damage_type": None,
-            "damage_label": None,
-            "damage_label_ar": None,
-            "confidence": 0.0,
-            "severity_score": 0.0,
-            "severity": "none",
-            "color": "#666666",
-            "bounding_boxes": [],
-            "image_size": None,
-            "all_predictions": [],
-            "message": f"Error processing image: {str(e)}",
-            "error": str(e)
-        }
-
-
-def create_mock_prediction() -> dict:
-    """Create a mock prediction for testing without YOLO"""
-    return {
-        "success": True,
-        "detected": True,
-        "damage_type": "D40",
-        "damage_label": "Pothole",
-        "damage_label_ar": "حفرة",
-        "confidence": 0.85,
-        "severity_score": 0.72,
-        "severity": "high",
-        "color": "#FF0000",
-        "bounding_boxes": [
-            {
-                "class": "D40",
-                "label": "Pothole",
-                "label_ar": "حفرة",
-                "confidence": 0.85,
-                "severity_score": 0.72,
-                "severity_level": "high",
-                "color": "#FF0000",
-                "bbox": {
-                    "x1": 100,
-                    "y1": 100,
-                    "x2": 300,
-                    "y2": 280,
-                    "xc": 0.5,
-                    "yc": 0.5,
-                    "width": 0.5,
-                    "height": 0.45
-                },
-                "area_ratio": 0.144
-            }
-        ],
-        "image_size": {"width": 400, "height": 400},
-        "all_predictions": [
-            {"class": "D40", "label": "Pothole", "confidence": 0.85, "severity": 0.72}
-        ],
-        "message": "Road damage detected: Pothole | Severity: 0.72"
-    }
-
-
-def get_model_info() -> dict:
-    """Get information about the loaded model"""
-    try:
-        if not YOLO_AVAILABLE:
+                    "danger_score": danger_score,
+                    "danger_level": danger_info["danger_level"],
+                    "danger_description": danger_info["danger_description"],
+                    "danger_description_ar": danger_info["danger_description_ar"],
+                    "severity_score": confidence,
+                    "severity": "high" if confidence > 0.66 else "medium" if confidence > 0.33 else "low",
+                    "color": "#FF0000" if confidence > 0.66 else "#FFFF00" if confidence > 0.33 else "#00FF00",
+                    "bounding_boxes": [{
+                        "class": damage_class,
+                        "label": DAMAGE_LABELS[damage_class],
+                        "bbox": {"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2)}
+                    }],
+                    "image_size": {"width": orig_w, "height": orig_h},
+                    "message": f"Damage detected: {DAMAGE_LABELS[damage_class]} (Confidence: {confidence:.1%}, Danger: {danger_score:.1%}, Level: {danger_info['danger_level']}/5)",
+                    "note": "YOLO-only mode (hybrid unavailable)"
+                }
+            else:
+                return {
+                    "success": True,
+                    "detected": False,
+                    "damage_type": None,
+                    "damage_label": "No damage detected",
+                    "confidence": 0.0,
+                    "message": "No damage detected"
+                }
+        except Exception as e:
             return {
-                "available": False,
-                "message": "Ultralytics YOLO not installed",
-                "model_path": YOLO_MODEL_PATH,
-                "model_exists": os.path.exists(YOLO_MODEL_PATH)
+                "success": False,
+                "detected": False,
+                "message": f"Error: {str(e)}",
+                "error": str(e)
             }
-        
-        model = load_model()
-        
+    
+    def get_model_info() -> dict:
+        """Get model info (fallback mode only)"""
         return {
-            "available": True,
+            "available": YOLO_AVAILABLE,
             "model_type": "YOLOv8",
-            "model_path": YOLO_MODEL_PATH if os.path.exists(YOLO_MODEL_PATH) else "yolov8n.pt (pretrained)",
-            "custom_model_exists": os.path.exists(YOLO_MODEL_PATH),
-            "area_threshold": AREA_THRESHOLD,
-            "classes": list(DAMAGE_LABELS.keys()),
-            "labels": DAMAGE_LABELS,
-            "labels_ar": DAMAGE_LABELS_AR,
-            "note": "For best results, train a custom model on the RDD2020 dataset"
-        }
-    except Exception as e:
-        return {
-            "available": False,
-            "error": str(e),
-            "model_path": YOLO_MODEL_PATH,
-            "model_exists": os.path.exists(YOLO_MODEL_PATH)
+            "hybrid_mode": False,
+            "note": "Fallback YOLO-only mode"
         }

@@ -4,6 +4,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTranslation } from '@/hooks/useTranslation';
 import { apiService, PredictionResult } from '@/services/api';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -460,8 +461,16 @@ export default function CameraScreen() {
         setPredictionResult(null);
 
         try {
-            console.log('Camera Analysis - Starting prediction for:', capturedImage);
-            const result = await apiService.predictDamage(capturedImage);
+            console.log('Camera Analysis - Resizing image before upload...');
+            // Resize image to max 1024px to prevent upload issues and reduce server memory load
+            const manipulatedImage = await ImageManipulator.manipulateAsync(
+                capturedImage,
+                [{ resize: { width: 1024 } }],
+                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+            );
+
+            console.log('Camera Analysis - Starting prediction for:', manipulatedImage.uri);
+            const result = await apiService.predictDamage(manipulatedImage.uri);
             console.log('Camera Analysis - Success:', result);
             setPredictionResult(result);
         } catch (error: any) {

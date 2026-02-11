@@ -1,0 +1,71 @@
+# BILAGH: Technologies et Outils Utilisés (Rapport PFE)
+
+Ce document récapitule l'ensemble des technologies, langages et outils utilisés pour la conception et la réalisation du projet **Bilagh**.
+
+---
+
+## 1. Langages de Programmation
+*   **TypeScript / JavaScript**: Utilisés pour le développement de l'application mobile (Frontend).
+*   **Python (3.10+)**: Utilisé pour le développement de l'API backend, du traitement d'images et de l'intelligence artificielle.
+
+## 2. Développement Frontend (Application Mobile)
+*   **React Native**: Framework principal pour le développement mobile multiplateforme.
+*   **Expo (SDK 54)**: Plateforme d'outils facilitant le développement, le test et le déploiement de l'application React Native.
+*   **Expo Router**: Système de navigation basé sur les fichiers (semblable à Next.js) pour une gestion fluide des écrans.
+*   **React Native Maps**: Intégration des cartes interactives pour la géolocalisation des signalements.
+*   **NativeWind (Tailwind CSS)**: Framework CSS permettant un design moderne, épuré et adaptatif.
+*   **i18next / react-i18next**: Gestion du multilingue (Arabe et Anglais) avec support RTL (Right-To-Left).
+*   **Expo Camera & Image Picker**: Modules pour la capture et la sélection des photos de dégradations routières.
+
+## 3. Développement Backend (API REST)
+*   **FastAPI**: Framework web Python moderne et ultra-rapide pour la création de l'API.
+*   **Uvicorn**: Serveur ASGI haute performance pour exécuter l'application FastAPI.
+*   **Motor**: Pilote asynchrone pour la communication avec la base de données MongoDB.
+*   **Pydantic**: Validation des données et gestion des schémas de l'API.
+*   **JWT (JSON Web Tokens)**: Standard utilisé pour la sécurisation des échanges et l'authentification des utilisateurs.
+*   **Passlib (bcrypt)**: Bibliothèque pour le hachage sécurisé des mots de passe.
+
+## 4. Base de Données et Stockage
+*   **MongoDB Atlas**: Base de données NoSQL orientée documents hébergée sur le cloud, offrant flexibilité et scalabilité.
+*   **Cloudinary**: Plateforme cloud dédiée à la gestion, l'optimisation et le stockage sécurisé des images signalées par les citoyens.
+
+## 5. Intelligence Artificielle et Vision par Ordinateur
+*   **YOLOv8 (Ultralytics)**: Modèle de détection d'objets à la pointe de l'industrie utilisé pour localiser précisément les types de dégradations (nids-de-poule, fissures, etc.).
+*   **TensorFlow / Keras**: Frameworks utilisés pour l'entraînement et l'exécution de modèles de classification de gravité personnalisés.
+*   **NumPy**: Utilisé pour les calculs mathématiques complexes lors de l'analyse géométrique des dommages.
+*   **Pillow (PIL)**: Manipulation et prétraitement des images sur le serveur.
+
+## 6. Outils de Développement, Test et Déploiement
+*   **Visual Studio Code**: Environnement de développement (IDE) principal.
+*   **Git / GitHub**: Outils de versioning pour la gestion et la collaboration sur le code source.
+*   **FastAPI Swagger (OpenAPI)**: Interface interactive pour le test et la documentation automatique des points de terminaison (endpoints) de l'API.
+*   **Postman**: Outil de test avancé pour valider les requêtes API et les flux d'authentification.
+*   **Railway**: Plateforme cloud utilisée pour le déploiement et l'hébergement de l'API backend.
+*   **Android Studio (Emulator)**: Pour le test et le débogage de l'application mobile en conditions réelles.
+
+---
+
+## 7. Description du Projet (Bilagh)
+**Bilagh** est une plateforme citoyenne intelligente basée sur l'intelligence artificielle, conçue pour améliorer la sécurité routière et la gestion de la maintenance des infrastructures en Algérie. 
+
+L'application permet aux citoyens de devenir des acteurs actifs de leur ville en signalant les dégradations routières (nids-de-poule, fissures, affaissements) via leurs smartphones. L'innovation majeure réside dans le traitement automatique des images : dès qu'une photo est soumise, le backend IA analyse la dégradation pour en déterminer le type, la sévérité et les dimensions, facilitant ainsi la prise de décision pour les autorités locales.
+
+## 8. Guide d'Utilisation (Flux de Travail)
+
+### A. Pour le Citoyen (Signalement)
+1.  **Authentification** : Création d'un compte ou connexion.
+2.  **Capture** : Utilisation de l'appareil photo pour prendre un cliché de la dégradation.
+3.  **Localisation** : Attribution automatique de la position GPS exacte.
+4.  **Soumission** : Envoi du rapport au serveur pour analyse.
+
+### B. Pour l'Agent de Terrain (Vérification)
+1.  **Consultation** : Accès à la liste des signalements citoyens en attente.
+2.  **Expertise IA** : Utilisation de l'outil d'analyse géométrique et de risque pour valider les données techniques.
+3.  **Validation** : Marquer le rapport comme "Vérifié" pour le transmettre à la commune.
+
+### C. Pour l'Autorité Municipale (Gestion)
+1.  **Tableau de Bord** : Visualisation globale des dégradations sur une carte.
+2.  **Priorisation** : Consultation des rapports classés par niveau de danger (calculé par l'IA).
+3.  **Décision** : Approbation des travaux, rejet ou assignation à une équipe de maintenance.
+4.  **Suivi** : Mise à jour du statut des rapports jusqu'à la résolution finale (Réparé).
+
