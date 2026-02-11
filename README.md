@@ -24,13 +24,13 @@ The system employs a **Conservative Hybrid Model** to minimize false positives:
 ### Use Case Diagram
 Detailed mapping of user interactions (Citizen, Agent, Municipal Authority) with the AI detection system.
 <div align="center">
-  <img src="assets/images/diagrams/use_case_diagram.png" width="800" />
+  <img src="assets/images/diagrams/use_case_diagram.PNG" width="800" />
 </div>
 
 ### Sequence Diagram
 Chronological flow of a road damage report from initial capture to final repair verification.
 <div align="center">
-  <img src="assets/images/diagrams/sequence_diagram.png" width="800" />
+  <img src="assets/images/diagrams/sequence_diagram.PNG" width="800" />
 </div>
 
 ## Danger Scoring System
