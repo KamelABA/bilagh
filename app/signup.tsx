@@ -22,7 +22,7 @@ import { API_ENDPOINTS } from '@/constants/api';
 export default function SignupScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const isDark = colorScheme === 'dark';
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
@@ -115,6 +115,19 @@ export default function SignupScreen() {
                 <View style={styles.logoContainer}>
                     <IconSymbol name="mappin.circle.fill" size={50} color="#fff" />
                     <Text style={styles.appName}>{t('auth.createAccount')}</Text>
+                </View>
+
+                {/* Language Switcher */}
+                <View style={styles.languageSwitcher}>
+                    <TouchableOpacity
+                        onPress={() => i18n.changeLanguage(i18n.language === 'en' ? 'ar' : 'en')}
+                        style={styles.langButton}
+                    >
+                        <IconSymbol name="globe" size={16} color="#fff" />
+                        <Text style={styles.langButtonText}>
+                            {i18n.language === 'en' ? 'العربية' : 'English'}
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             </LinearGradient>
 
@@ -342,6 +355,25 @@ const styles = StyleSheet.create({
     },
     loginTextBold: {
         color: '#0B5394',
+        fontWeight: '600',
+    },
+    languageSwitcher: {
+        position: 'absolute',
+        top: 60,
+        right: 20,
+    },
+    langButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        gap: 6,
+    },
+    langButtonText: {
+        color: '#fff',
+        fontSize: 14,
         fontWeight: '600',
     },
 });

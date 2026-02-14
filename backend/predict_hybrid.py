@@ -278,11 +278,31 @@ def predict_damage(image_data: bytes) -> Dict[str, Any]:
                 return keras_result
             else:
                 # YOLO did not see any damage, but Keras did.
-                # If Keras is very confident (> 0.95), we might still trust it.
-                # If Keras is moderately confident (0.85 - 0.95), it's likely a false positive.
-                if keras_result.get("confidence", 0) > 0.95:
-                    keras_result["damage_type"] = "D40" # Default to general road damage
-                    keras_result["note"] = "Keras highly confident in damage, but YOLO did not find a specific type"
+                # If Keras is confident enough (> 0.88), we trust it even without YOLO.
+                # The Keras model is trained specifically on textures and is often more sensitive
+                # to things like alligator cracking which YOLO might miss as objects.
+                if keras_result.get("confidence", 0) > 0.70:
+                    keras_result["damage_type"] = "D20" # Default to alligator crack for texture detections
+                    keras_result["damage_label"] = "Alligator Crack"
+                    keras_result["damage_label_ar"] = "شق تمساحي"
+                    keras_result["note"] = f"Keras detected damage ({keras_result['confidence']:.1%}), but YOLO did not find a specific object. Defaulting to texture-based classification."
+                    
+                    # Calculate danger score for generic damage
+                    danger_score = calculate_danger_score("D20", keras_result.get("confidence", 0.0))
+                    keras_result["danger_score"] = danger_score
+                    
+                    # Add danger level and descriptions
+                    danger_info = calculate_danger_level("D20", keras_result.get("confidence", 0.0))
+                    keras_result["danger_level"] = danger_info["danger_level"]
+                    keras_result["danger_description"] = danger_info["danger_description"]
+                    keras_result["danger_description_ar"] = danger_info["danger_description_ar"]
+                    
+                    keras_result["message"] = f"Road damage detected: Alligator Crack (Confidence: {keras_result['confidence']:.1%}, Danger: {danger_score:.1%}, Level: {danger_info['danger_level']}/5)"
+                    
+                    category_info = get_damage_category("D20")
+                    keras_result["damage_category"] = category_info["category"]
+                    keras_result["damage_category_ar"] = category_info["category_ar"]
+                    
                     return keras_result
                 else:
                     # Treat as false positive

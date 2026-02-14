@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 const PRODUCTION_API_URL = 'https://web-production-32b2a.up.railway.app';
 
 // For development: Use localhost for web, use your machine's IP for mobile devices
-const LOCAL_IP = '192.168.2.224';
+export const LOCAL_IP = '172.20.10.2';
 const DEV_API_URL = Platform.OS === 'web'
     ? 'http://localhost:8000'
     : `http://${LOCAL_IP}:8000`;

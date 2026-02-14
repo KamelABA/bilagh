@@ -209,7 +209,7 @@ def predict_damage(image_data: bytes) -> Dict[str, Any]:
         damage_probability = float(predictions[0][0])  # Single output value
         
         # Threshold for detection
-        CONFIDENCE_THRESHOLD = 0.85  # Very conservative to minimize false positives
+        CONFIDENCE_THRESHOLD = 0.70  # Increased sensitivity (was 0.85)
         NOT_ROAD_THRESHOLD = 0.30    # If confidence is very low, it's probably not even a road
         
         # Debug logging

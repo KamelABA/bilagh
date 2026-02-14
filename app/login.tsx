@@ -17,27 +17,41 @@ import {
     View
 } from 'react-native';
 
-import { API_ENDPOINTS } from '@/constants/api';
+import { API_ENDPOINTS, LOCAL_IP } from '@/constants/api';
 
 export default function LoginScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const isDark = colorScheme === 'dark';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
+
+    const handleTestLogin = async () => {
+        const testEmail = 'test@bilagh.dz';
+        const testPassword = 'test123';
+
+        setEmail(testEmail);
+        setPassword(testPassword);
+
+        // Directly call login logic with test credentials
+        await performLogin(testEmail, testPassword);
+    };
 
     const handleLogin = async () => {
         if (!email || !password) {
             Alert.alert(t('common.error'), t('auth.fillAllFields'));
             return;
         }
+        await performLogin(email, password);
+    };
 
+    const performLogin = async (loginEmail: string, loginPassword: string) => {
         setLoading(true);
         console.log('LOGIN: Starting login process...');
         console.log('LOGIN: API URL:', API_ENDPOINTS.LOGIN);
-        console.log('LOGIN: Email:', email);
+        console.log('LOGIN: Email:', loginEmail);
 
         try {
             // Create abort controller for timeout
@@ -47,83 +61,97 @@ export default function LoginScreen() {
                 console.error('LOGIN: Request timed out after 30s');
             }, 30000); // 30 second timeout
 
-            // Call backend API
-            const formData = new URLSearchParams();
-            formData.append('username', email);
-            formData.append('password', password);
+            // Call backend API with manual url-encoded string
+            const body = `username=${encodeURIComponent(loginEmail)}&password=${encodeURIComponent(loginPassword)}`;
 
             console.log('LOGIN: Sending request to backend...');
             const response = await fetch(API_ENDPOINTS.LOGIN, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json',
                 },
-                body: formData.toString(),
+                body: body,
                 signal: controller.signal,
             });
 
             clearTimeout(timeoutId);
-            console.log('LOGIN: Got response, status:', response.status);
+            const responseStatus = response.status;
+            console.log('LOGIN: Got response, status:', responseStatus);
 
-            const data = await response.json();
-            console.log('LOGIN: Response data:', data);
+            let data;
+            try {
+                data = await response.json();
+                console.log('LOGIN: Response data:', data);
+            } catch (e) {
+                console.error('LOGIN: Failed to parse JSON response');
+                throw new Error('Server returned invalid response. Please check backend logs.');
+            }
 
             if (response.ok) {
                 console.log('LOGIN: Login successful, saving token...');
                 // Save token
-                await AsyncStorage.setItem('userToken', data.access_token);
-                await AsyncStorage.setItem('userEmail', email);
+                await AsyncStorage.multiSet([
+                    ['userToken', data.access_token],
+                    ['userEmail', loginEmail]
+                ]);
 
                 console.log('LOGIN: Fetching user profile...');
                 // Fetch user profile to check role
                 const userController = new AbortController();
                 const userTimeoutId = setTimeout(() => userController.abort(), 10000);
 
-                const userResponse = await fetch(API_ENDPOINTS.ME, {
-                    headers: {
-                        'Authorization': `Bearer ${data.access_token}`,
-                    },
-                    signal: userController.signal,
-                });
+                try {
+                    const userResponse = await fetch(API_ENDPOINTS.ME, {
+                        headers: {
+                            'Authorization': `Bearer ${data.access_token}`,
+                            'Accept': 'application/json',
+                        },
+                        signal: userController.signal,
+                    });
 
-                clearTimeout(userTimeoutId);
-                console.log('LOGIN: User profile response status:', userResponse.status);
+                    clearTimeout(userTimeoutId);
+                    console.log('LOGIN: User profile response status:', userResponse.status);
 
-                if (userResponse.ok) {
-                    const userData = await userResponse.json();
-                    console.log('LOGIN: User data:', userData);
-                    await AsyncStorage.setItem('userRole', userData.role || 'user');
-                    await AsyncStorage.setItem('userName', userData.full_name || userData.username || '');
-                    await AsyncStorage.setItem('userEmail', userData.email || '');
+                    if (userResponse.ok) {
+                        const userData = await userResponse.json();
+                        console.log('LOGIN: User data:', userData);
 
-                    console.log('LOGIN: Redirecting based on role:', userData.role);
-                    // Redirect based on role
-                    if (userData.role === 'agent') {
-                        router.replace('/(agent)');
-                    } else if (userData.role === 'municipal') {
-                        router.replace('/(municipal)');
+                        await AsyncStorage.multiSet([
+                            ['userRole', userData.role || 'user'],
+                            ['userName', userData.full_name || userData.username || ''],
+                            ['userEmail', userData.email || '']
+                        ]);
+
+                        console.log('LOGIN: Redirecting based on role:', userData.role);
+                        // Redirect based on role
+                        if (userData.role === 'agent') {
+                            router.replace('/(agent)');
+                        } else if (userData.role === 'municipal') {
+                            router.replace('/(municipal)');
+                        } else {
+                            router.replace('/(tabs)');
+                        }
                     } else {
+                        console.log('LOGIN: Profile fetch failed, redirecting to tabs anyway');
                         router.replace('/(tabs)');
                     }
-                } else {
-                    console.log('LOGIN: Profile fetch failed, redirecting to tabs anyway');
-                    // Default to regular user tabs if profile fetch fails
+                } catch (profileError) {
+                    console.warn('LOGIN: Error fetching profile:', profileError);
                     router.replace('/(tabs)');
                 }
             } else {
-                console.error('LOGIN: Login failed:', data.detail);
-                Alert.alert(t('common.error'), data.detail || t('auth.loginFailed'));
+                console.error('LOGIN: Login failed:', data?.detail || 'Unknown error');
+                Alert.alert(t('common.error'), data?.detail || t('auth.loginFailed'));
             }
         } catch (error: any) {
             console.error('LOGIN: Error occurred:', error);
 
-            let errorMessage = t('auth.serverError');
+            let errorMessage = error.message || t('auth.serverError');
             if (error.name === 'AbortError') {
-                errorMessage = 'Request timeout. Please check:\n\n1. Backend server is running\n2. Phone and computer on same WiFi\n3. Correct IP address in settings';
-                console.error('LOGIN: Request was aborted (timeout)');
+                errorMessage = 'Request timeout. Please check:\n\n1. Backend server is running\n2. Phone and computer on same WiFi\n3. Correct IP address (' + LOCAL_IP + ')';
             } else if (error.message?.includes('Network request failed')) {
-                errorMessage = 'Cannot connect to server.\n\nPlease verify:\n• Backend running at ' + API_ENDPOINTS.LOGIN + '\n• Same WiFi network\n• Correct IP address';
-                console.error('LOGIN: Network request failed - cannot reach server');
+                errorMessage = 'Cannot connect to server.\n\nPlease verify:\n• Backend running at ' + API_ENDPOINTS.LOGIN + '\n• Same WiFi network\n• Correct IP address: ' + LOCAL_IP;
             }
 
             Alert.alert(t('common.error'), errorMessage);
@@ -143,6 +171,19 @@ export default function LoginScreen() {
                     <IconSymbol name="mappin.circle.fill" size={60} color="#fff" />
                     <Text style={styles.appName}>{t('common.appName')}</Text>
                     <Text style={styles.tagline}>{t('common.tagline')}</Text>
+                </View>
+
+                {/* Language Switcher */}
+                <View style={styles.languageSwitcher}>
+                    <TouchableOpacity
+                        onPress={() => i18n.changeLanguage(i18n.language === 'en' ? 'ar' : 'en')}
+                        style={styles.langButton}
+                    >
+                        <IconSymbol name="globe" size={16} color="#fff" />
+                        <Text style={styles.langButtonText}>
+                            {i18n.language === 'en' ? 'العربية' : 'English'}
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             </LinearGradient>
 
@@ -227,6 +268,15 @@ export default function LoginScreen() {
                             <Text style={[styles.signupText, { color: isDark ? '#999' : '#666' }]}>
                                 {t('auth.dontHaveAccount')}{' '}
                                 <Text style={styles.signupTextBold}>{t('auth.signup')}</Text>
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={handleTestLogin}
+                            style={styles.testAppLink}
+                        >
+                            <Text style={styles.testAppText}>
+                                {t('auth.testApp')}
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -340,6 +390,36 @@ const styles = StyleSheet.create({
     },
     signupTextBold: {
         color: '#0B5394',
+        fontWeight: '600',
+    },
+    testAppLink: {
+        alignItems: 'center',
+        marginTop: 10,
+        paddingBottom: 20,
+    },
+    testAppText: {
+        color: '#4A7C2C',
+        fontWeight: 'bold',
+        fontSize: 16,
+        textDecorationLine: 'underline',
+    },
+    languageSwitcher: {
+        position: 'absolute',
+        top: 60,
+        right: 20,
+    },
+    langButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        gap: 6,
+    },
+    langButtonText: {
+        color: '#fff',
+        fontSize: 14,
         fontWeight: '600',
     },
 });

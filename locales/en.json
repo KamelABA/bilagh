@@ -50,7 +50,8 @@
         "signupFailed": "Signup failed. Email may already be registered.",
         "serverError": "Unable to connect to server. Please try again.",
         "accountCreatedPleaseLogin": "Account created! Please login.",
-        "loginRequired": "Please login to continue"
+        "loginRequired": "Please login to continue",
+        "testApp": "Test App (No Sign In)"
     },
     "tabs": {
         "home": "Home",
@@ -165,7 +166,7 @@
         "severityScale": "Severity Scale (0-1)",
         "roadIsGood": "Road is Good",
         "roadConditionGood": "Road in Good Condition",
-        "confidenceScore": "Damage Score",
+        "confidenceScore": "Analysis Confidence",
         "notRoadOrNoIssue": "This image may not show a road or no significant damage was detected. Try taking a clearer photo of the road surface.",
         "roadInGoodCondition": "Great news! The AI analysis indicates this road section appears to be in good condition with no significant damage detected.",
         "tipClearPhoto": "Take a clear, focused photo of the road",
