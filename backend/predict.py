@@ -166,7 +166,7 @@ except ImportError as e:
         # Cap between 0.0 and 1.0
         danger_score = max(0.0, min(1.0, danger_score))
         
-        return round(danger_score, 2)
+        return round(danger_score * 100, 1)
     
     def load_model():
         """Load YOLO model (fallback mode only)"""

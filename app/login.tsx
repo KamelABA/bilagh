@@ -48,21 +48,24 @@ export default function LoginScreen() {
     };
 
     const performLogin = async (loginEmail: string, loginPassword: string) => {
+        const trimmedEmail = loginEmail.trim();
+        const trimmedPassword = loginPassword; // Usually don't trim passwords as spaces might be intentional, but email should definitely be trimmed.
+
         setLoading(true);
         console.log('LOGIN: Starting login process...');
         console.log('LOGIN: API URL:', API_ENDPOINTS.LOGIN);
-        console.log('LOGIN: Email:', loginEmail);
+        console.log('LOGIN: Email:', `"${trimmedEmail}"`);
 
         try {
             // Create abort controller for timeout
             const controller = new AbortController();
             const timeoutId = setTimeout(() => {
                 controller.abort();
-                console.error('LOGIN: Request timed out after 30s');
-            }, 30000); // 30 second timeout
+                console.error('LOGIN: Request timed out after 45s');
+            }, 45000); // 45 second timeout for login
 
             // Call backend API with manual url-encoded string
-            const body = `username=${encodeURIComponent(loginEmail)}&password=${encodeURIComponent(loginPassword)}`;
+            const body = `username=${encodeURIComponent(trimmedEmail)}&password=${encodeURIComponent(trimmedPassword)}`;
 
             console.log('LOGIN: Sending request to backend...');
             const response = await fetch(API_ENDPOINTS.LOGIN, {
@@ -80,11 +83,18 @@ export default function LoginScreen() {
             console.log('LOGIN: Got response, status:', responseStatus);
 
             let data;
+            const responseClone = response.clone();
             try {
                 data = await response.json();
                 console.log('LOGIN: Response data:', data);
             } catch (e) {
                 console.error('LOGIN: Failed to parse JSON response');
+                try {
+                    const rawText = await responseClone.text();
+                    console.error('LOGIN: Raw response text:', rawText);
+                } catch (textError) {
+                    console.error('LOGIN: Also failed to get raw text:', textError);
+                }
                 throw new Error('Server returned invalid response. Please check backend logs.');
             }
 
@@ -99,7 +109,7 @@ export default function LoginScreen() {
                 console.log('LOGIN: Fetching user profile...');
                 // Fetch user profile to check role
                 const userController = new AbortController();
-                const userTimeoutId = setTimeout(() => userController.abort(), 10000);
+                const userTimeoutId = setTimeout(() => userController.abort(), 20000); // Increased to 20s
 
                 try {
                     const userResponse = await fetch(API_ENDPOINTS.ME, {
@@ -148,6 +158,7 @@ export default function LoginScreen() {
             console.error('LOGIN: Error occurred:', error);
 
             let errorMessage = error.message || t('auth.serverError');
+
             if (error.name === 'AbortError') {
                 errorMessage = 'Request timeout. Please check:\n\n1. Backend server is running\n2. Phone and computer on same WiFi\n3. Correct IP address (' + LOCAL_IP + ')';
             } else if (error.message?.includes('Network request failed')) {
@@ -285,123 +296,29 @@ export default function LoginScreen() {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
     header: {
-        paddingTop: 60,
-        paddingBottom: 40,
+        paddingTop: 80, // Increased for safe area
+        paddingBottom: 60,
         alignItems: 'center',
+        position: 'relative',
     },
     logoContainer: {
         alignItems: 'center',
     },
     appName: {
-        fontSize: 36,
+        fontSize: 32,
         fontWeight: 'bold',
         color: '#fff',
-        marginTop: 16,
+        marginTop: 12,
     },
     tagline: {
-        fontSize: 14,
-        color: '#fff',
-        opacity: 0.9,
+        fontSize: 16,
+        color: 'rgba(255,255,255,0.8)',
         marginTop: 4,
-    },
-    formContainer: {
-        flex: 1,
-    },
-    scrollContent: {
-        padding: 24,
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        marginBottom: 8,
-    },
-    subtitle: {
-        fontSize: 14,
-        marginBottom: 32,
-    },
-    form: {
-        gap: 20,
-    },
-    inputGroup: {
-        gap: 8,
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        borderRadius: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 2,
-    },
-    input: {
-        flex: 1,
-        paddingVertical: 16,
-        paddingLeft: 12,
-        fontSize: 16,
-    },
-    loginButton: {
-        paddingVertical: 16,
-        borderRadius: 12,
-        alignItems: 'center',
-        marginTop: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 5,
-    },
-    loginButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    divider: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginVertical: 8,
-    },
-    dividerLine: {
-        flex: 1,
-        height: 1,
-    },
-    dividerText: {
-        paddingHorizontal: 16,
-        fontSize: 12,
-    },
-    signupLink: {
-        alignItems: 'center',
-        paddingVertical: 8,
-    },
-    signupText: {
-        fontSize: 14,
-    },
-    signupTextBold: {
-        color: '#0B5394',
-        fontWeight: '600',
-    },
-    testAppLink: {
-        alignItems: 'center',
-        marginTop: 10,
-        paddingBottom: 20,
-    },
-    testAppText: {
-        color: '#4A7C2C',
-        fontWeight: 'bold',
-        fontSize: 16,
-        textDecorationLine: 'underline',
     },
     languageSwitcher: {
         position: 'absolute',
@@ -421,5 +338,111 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 14,
         fontWeight: '600',
+    },
+    formContainer: {
+        flex: 1,
+        marginTop: -40,
+        backgroundColor: 'transparent',
+    },
+    scrollContent: {
+        padding: 24,
+        backgroundColor: 'transparent',
+        borderTopLeftRadius: 40,
+        borderTopRightRadius: 40,
+    },
+    title: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    subtitle: {
+        fontSize: 16,
+        marginBottom: 32,
+        textAlign: 'center',
+    },
+    form: {
+        gap: 20,
+    },
+    inputGroup: {
+        gap: 8,
+    },
+    label: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 4,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        borderRadius: 15,
+        height: 60,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 2,
+    },
+    input: {
+        flex: 1,
+        marginLeft: 12,
+        fontSize: 16,
+        height: '100%',
+    },
+    loginButton: {
+        height: 60,
+        borderRadius: 15,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 5,
+    },
+    loginButtonText: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: 24,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+    },
+    dividerText: {
+        marginHorizontal: 15,
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    signupLink: {
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    signupText: {
+        fontSize: 15,
+    },
+    signupTextBold: {
+        fontWeight: 'bold',
+        color: '#0B5394',
+    },
+    testAppLink: {
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderRadius: 15,
+        backgroundColor: 'rgba(11, 83, 148, 0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(11, 83, 148, 0.1)',
+    },
+    testAppText: {
+        color: '#0B5394',
+        fontSize: 14,
+        fontWeight: 'bold',
     },
 });

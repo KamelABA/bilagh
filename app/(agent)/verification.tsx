@@ -640,7 +640,7 @@ export default function VerificationScreen() {
                                             {t('agent.riskIndex')}
                                         </Text>
                                         <Text style={[styles.riskValue, { color: getUrgencyColor(analysisResult.risk_assessment?.urgency || 'low') }]}>
-                                            {analysisResult.risk_assessment?.risk_index}/100
+                                            {analysisResult.risk_assessment?.risk_index}%
                                         </Text>
                                     </View>
                                 </View>
@@ -719,7 +719,7 @@ export default function VerificationScreen() {
                                 {/* Confidence */}
                                 <View style={styles.confidenceRow}>
                                     <Text style={[styles.confidenceLabel, { color: isDark ? '#666' : '#999' }]}>
-                                        {t('agent.confidence')}: {((analysisResult.risk_assessment?.confidence || 0) * 100).toFixed(0)}%
+                                        {t('agent.dangerScore')}: {(analysisResult.risk_assessment?.risk_index || 0).toFixed(0)}%
                                     </Text>
                                 </View>
                             </View>

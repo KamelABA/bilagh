@@ -1,3 +1,6 @@
+import asyncio
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -14,6 +17,9 @@ import risk_assessment
 from models import UserRole, ReportStatus
 import schemas
 from bson import ObjectId
+
+# Shared thread pool — used to offload CPU-bound bcrypt work off the async event loop
+_thread_pool = ThreadPoolExecutor(max_workers=4)
 
 load_dotenv()
 
@@ -64,15 +70,46 @@ async def register(user: schemas.UserCreate):
 
 @app.post("/token", response_model=schemas.Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = await db.users.find_one({"email": form_data.username})
-    if not user or not auth.verify_password(form_data.password, user["hashed_password"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
-    
-    access_token = auth.create_access_token(
-        data={"sub": user["email"]}, 
-        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    try:
+        print(f"LOGIN ATTEMPT: {form_data.username}")
+        user = await db.users.find_one({"email": form_data.username})
+        if not user:
+            print(f"LOGIN FAILED: User {form_data.username} not found")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password"
+            )
+
+        # bcrypt.verify is CPU-intensive — run in a thread so we don't freeze the event loop
+        loop = asyncio.get_running_loop()
+        password_valid = await loop.run_in_executor(
+            _thread_pool,
+            auth.verify_password,
+            form_data.password,
+            user["hashed_password"],
+        )
+
+        if not password_valid:
+            print(f"LOGIN FAILED: Wrong password for {form_data.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password"
+            )
+
+        access_token = auth.create_access_token(
+            data={"sub": user["email"]},
+            expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
+        print(f"LOGIN SUCCESS: {form_data.username}")
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"LOGIN ERROR: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/users/me", response_model=schemas.User)
 async def read_users_me(current_user: schemas.User = Depends(auth.get_current_user)):
@@ -446,5 +483,9 @@ handler = app
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # reload=False: TensorFlow takes ~30s to load; a hot-reload mid-request
+    # causes the next request to queue for the full reload time, making
+    # the mobile login appear to time out.  Restart the server manually
+    # when you change files during development.
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
 

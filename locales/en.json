@@ -161,9 +161,15 @@
         "damageType": "Damage Type",
         "severity": "Severity",
         "confidence": "Confidence",
+        "dangerScore": "Danger Score",
+        "dangerLevel": "Danger Level",
         "allPredictions": "All Predictions",
         "createReport": "Create Report",
         "severityScale": "Severity Scale (0-1)",
+        "dangerLow": "Low",
+        "dangerMedium": "Medium",
+        "dangerHigh": "High",
+        "dangerCritical": "Critical",
         "roadIsGood": "Road is Good",
         "roadConditionGood": "Road in Good Condition",
         "confidenceScore": "Analysis Confidence",
@@ -340,6 +346,7 @@
         "priorityRoutine": "P4 - Routine",
         "priorityMonitor": "P5 - Monitor",
         "confidence": "Confidence",
+        "dangerScore": "Danger Score",
         "roadType": "Road Type",
         "roadMain": "Main Road",
         "roadSecondary": "Secondary Road",
@@ -424,11 +431,11 @@
         },
         "explanations": {
             "noDamageDetected": "No road damage was detected in this image.",
-            "damageDetected": "Detected {type} with {confidence}% confidence ({severity} severity)."
+            "damageDetected": "Detected {type} with {dangerScore}% danger score ({severity} severity)."
         },
         "reasons": {
-            "lowConfidence": "Detection confidence is below 50%",
-            "moderateConfidence": "Detection confidence is moderate (50-70%)",
+            "lowConfidence": "Danger detection score is below 50%",
+            "moderateConfidence": "Danger detection score is moderate (50-70%)",
             "multipleDetections": "Multiple damage areas detected",
             "smallDamageArea": "Detected damage area is relatively small",
             "generalUncertainty": "AI may benefit from your feedback"

@@ -14,7 +14,7 @@ if not DATABASE_URL:
     DATABASE_URL = "mongodb://localhost:27017"
 
 try:
-    client = AsyncIOMotorClient(DATABASE_URL, serverSelectionTimeoutMS=5000)
+    client = AsyncIOMotorClient(DATABASE_URL, serverSelectionTimeoutMS=30000)
     db = client.bilagh
     print(f"MongoDB client initialized for database: bilagh")
 except Exception as e:

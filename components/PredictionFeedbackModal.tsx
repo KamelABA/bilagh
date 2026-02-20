@@ -52,7 +52,7 @@ const FEEDBACK_CATEGORIES = {
     imageQuality: 'Image Quality Issues',
     perspective: 'Camera/Scale Problems',
     confusion: 'Context Confusion',
-    uncertainty: 'Low Confidence',
+    uncertainty: 'Low Danger Detection',
 } as const;
 
 // Generate feedback options based on detected damage
@@ -147,8 +147,9 @@ function generateFeedbackOptions(
         ],
     });
 
-    // 5. Low Confidence Note (only if low confidence)
-    if (confidence < 0.6) {
+    // 5. Low Danger Detection Note (only if low danger score)
+    const dangerScore = (prediction.danger_score ?? (prediction.severity_score * 100)) / 100;
+    if (dangerScore < 0.6) {
         categories.push({
             category: t('feedback.categories.uncertainty'),
             options: [
@@ -174,8 +175,8 @@ function generateExplanation(
     const damageType = isArabic
         ? prediction.damage_label_ar
         : prediction.damage_label;
-    const confidence = Math.round(prediction.confidence * 100);
-    const severity = prediction.severity;
+    const dangerScore = Math.round(prediction.danger_score ?? (prediction.severity_score * 100));
+    const severity = prediction.danger_level ?? prediction.severity;
 
     if (!prediction.detected) {
         return t('feedback.explanations.noDamageDetected');
@@ -183,7 +184,7 @@ function generateExplanation(
 
     return t('feedback.explanations.damageDetected')
         .replace('{type}', damageType || 'Unknown')
-        .replace('{confidence}', confidence.toString())
+        .replace('{dangerScore}', dangerScore.toString())
         .replace('{severity}', t(`reports.${severity}`));
 }
 
@@ -194,16 +195,18 @@ function generateUncertaintyReasons(
 ): string[] {
     const reasons: string[] = [];
 
-    if (prediction.confidence < 0.5) {
+    const dangerScore = (prediction.danger_score ?? (prediction.severity_score * 100)) / 100;
+
+    if (dangerScore < 0.5) {
         reasons.push(t('feedback.reasons.lowConfidence'));
     }
-    if (prediction.confidence < 0.7 && prediction.confidence >= 0.5) {
+    if (dangerScore < 0.7 && dangerScore >= 0.5) {
         reasons.push(t('feedback.reasons.moderateConfidence'));
     }
     if (prediction.bounding_boxes && prediction.bounding_boxes.length > 1) {
         reasons.push(t('feedback.reasons.multipleDetections'));
     }
-    if (prediction.severity_score < 0.3) {
+    if (dangerScore < 0.3) {
         reasons.push(t('feedback.reasons.smallDamageArea'));
     }
 
@@ -264,8 +267,8 @@ export function PredictionFeedbackModal({
     const handleSubmit = () => {
         const feedbackData: FeedbackSubmission = {
             damageType: prediction.damage_type || 'none',
-            confidence: prediction.confidence,
-            severity: prediction.severity,
+            confidence: prediction.danger_score ?? (prediction.severity_score * 100),
+            severity: prediction.danger_level ?? prediction.severity,
             selectedFeedback: selectedOptions,
             timestamp: new Date().toISOString(),
             imageUri,
@@ -307,7 +310,7 @@ export function PredictionFeedbackModal({
                     {/* Header */}
                     <View style={styles.header}>
                         <LinearGradient
-                            colors={getSeverityColor(prediction.severity)}
+                            colors={getSeverityColor(prediction.danger_level ?? prediction.severity)}
                             style={styles.headerIcon}
                         >
                             <IconSymbol

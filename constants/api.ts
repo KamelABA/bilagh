@@ -1,17 +1,17 @@
-import { Platform } from 'react-native';
 
-// API Configuration
-// Set this to your deployed backend URL (Railway)
+// ─── API Configuration ───────────────────────────────────────────────────────
+// PRODUCTION: Railway-hosted backend — works on any WiFi / mobile network
 const PRODUCTION_API_URL = 'https://web-production-32b2a.up.railway.app';
 
-// For development: Use localhost for web, use your machine's IP for mobile devices
-export const LOCAL_IP = '172.20.10.2';
-const DEV_API_URL = Platform.OS === 'web'
-    ? 'http://localhost:8000'
-    : `http://${LOCAL_IP}:8000`;
+// DEVELOPMENT ONLY: uncomment the lines below and set API_URL = DEV_API_URL
+// when you need to test against the local backend on the same WiFi network.
+export const LOCAL_IP = '192.168.2.224';
+// const DEV_API_URL = Platform.OS === 'web'
+//     ? 'http://localhost:8000'
+//     : `http://${LOCAL_IP}:8000`;
 
-// Use production URL if set, otherwise use development URL
-export const API_URL = DEV_API_URL;  // Changed to DEV for testing updated model
+// ✅ Always use production so the APK works on ANY network
+export const API_URL = PRODUCTION_API_URL;
 
 export const API_ENDPOINTS = {
     // Auth

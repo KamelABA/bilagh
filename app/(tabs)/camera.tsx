@@ -47,8 +47,10 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
     };
 
     const getSeverityColorFromScore = (score: number): string => {
-        if (score >= 0.66) return '#FF0000';  // Red
-        if (score >= 0.33) return '#FFFF00';  // Yellow
+        // Universal color mapper (handles both 0-1 and 0-100 scales)
+        const normalized = score > 1 ? score / 100 : score;
+        if (normalized >= 0.66) return '#FF0000';  // Red
+        if (normalized >= 0.33) return '#FFFF00';  // Yellow
         return '#00FF00';  // Green
     };
 
@@ -61,11 +63,11 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
         }
     };
 
-    // Use severity_score from backend (0-1 scale based on area ratio)
-    const severityScore = result.severity_score ?? result.confidence;
-    const severityPercent = Math.round(severityScore * 100);
+    // Use danger_score from backend (0-100 scale)
+    const dangerScore = result.danger_score ?? (result.severity_score * 100);
+    const dangerPercent = Math.round(dangerScore);
     const confidencePercent = Math.round(result.confidence * 100);
-    const boundingBoxColor = result.color ?? getSeverityColorFromScore(severityScore);
+    const boundingBoxColor = result.color ?? getSeverityColorFromScore(dangerScore);
 
     return (
         <ScrollView
@@ -94,7 +96,7 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
                                 {isArabic ? result.damage_label_ar : result.damage_label}
                             </Text>
                             <Text style={styles.imageConfidenceText}>
-                                | Severity: {severityScore.toFixed(2)}
+                                | {t('camera.dangerScore')}: {dangerScore.toFixed(0)}%
                             </Text>
                         </View>
                     </>
@@ -147,7 +149,7 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
                                 {t('camera.roadConditionGood')}
                             </Text>
                             <Text style={[styles.roadConditionSubtitle, { color: isDark ? '#999' : '#666' }]}>
-                                {t('camera.confidenceScore')}: {result.confidence.toFixed(3)}
+                                {t('camera.dangerScore')}: {dangerScore.toFixed(1)}%
                             </Text>
                         </View>
                     </View>
@@ -155,7 +157,7 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
                     <View style={[styles.roadConditionDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
 
                     <Text style={[styles.roadConditionMessage, { color: isDark ? '#aaa' : '#555' }]}>
-                        {result.confidence < 0.1
+                        {result.is_road === false || (result.confidence < 0.1 && result.danger_score < 5)
                             ? t('camera.notRoadOrNoIssue')
                             : t('camera.roadInGoodCondition')}
                     </Text>
@@ -186,16 +188,16 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
             {/* Severity Scale (0-1) */}
             <View style={[styles.severityScaleCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}>
                 <Text style={[styles.severityScaleTitle, { color: isDark ? '#fff' : '#000' }]}>
-                    {t('camera.severityScale')}
+                    {t('camera.dangerLevel')}
                 </Text>
 
                 <View style={styles.severityScaleContainer}>
                     {/* Scale Labels */}
                     <View style={styles.scaleLabels}>
-                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>0</Text>
-                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>0.33</Text>
-                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>0.66</Text>
-                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>1</Text>
+                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>0%</Text>
+                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>33%</Text>
+                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>66%</Text>
+                        <Text style={[styles.scaleLabel, { color: isDark ? '#999' : '#666' }]}>100%</Text>
                     </View>
 
                     {/* Gradient Scale Bar */}
@@ -208,7 +210,7 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
                         />
 
                         {/* Current Value Indicator */}
-                        <View style={[styles.scaleIndicator, { left: `${Math.min(severityScore * 100, 100)}%` }]}>
+                        <View style={[styles.scaleIndicator, { left: `${Math.min(dangerScore, 100)}%` }]}>
                             <View style={[styles.indicatorLine, { backgroundColor: isDark ? '#fff' : '#000' }]} />
                             <View style={[styles.indicatorDot, { backgroundColor: boundingBoxColor, borderColor: isDark ? '#fff' : '#000' }]} />
                         </View>
@@ -224,9 +226,9 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
 
                 {/* Current Score Display */}
                 <View style={styles.scoreDisplay}>
-                    <Text style={[styles.scoreLabel, { color: isDark ? '#999' : '#666' }]}>{t('camera.severity')}:</Text>
+                    <Text style={[styles.scoreLabel, { color: isDark ? '#999' : '#666' }]}>{t('camera.dangerScore')}:</Text>
                     <Text style={[styles.scoreValue, { color: boundingBoxColor }]}>
-                        {severityScore.toFixed(2)}
+                        {dangerScore.toFixed(0)}%
                     </Text>
                 </View>
             </View>
@@ -255,11 +257,11 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
                         </View>
                         <View style={styles.severityBadgeContainer}>
                             <LinearGradient
-                                colors={getSeverityColor(result.severity)}
+                                colors={getSeverityColor(result.danger_level ?? result.severity)}
                                 style={styles.severityBadge}
                             >
                                 <Text style={styles.severityBadgeText}>
-                                    {t(`reports.${result.severity}`)}
+                                    {t(`reports.${result.danger_level ?? result.severity}`)}
                                 </Text>
                             </LinearGradient>
                         </View>
@@ -267,22 +269,22 @@ function PredictionDisplay({ result, imageUri, onClose, onProceedToReport, onFee
 
                     <View style={styles.separator} />
 
-                    {/* Confidence Bar */}
+                    {/* Danger Bar */}
                     <View style={styles.confidenceRow}>
                         <Text style={[styles.confidenceLabel, { color: isDark ? '#999' : '#666' }]}>
-                            {t('camera.confidence')}
+                            {t('camera.dangerScore')}
                         </Text>
                         <View style={styles.confidenceBarWrapper}>
                             <View style={[styles.confidenceBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
                                 <LinearGradient
-                                    colors={getSeverityColor(result.severity)}
-                                    style={[styles.confidenceBarFill, { width: `${confidencePercent}%` }]}
+                                    colors={getSeverityColor(result.danger_level ?? result.severity)}
+                                    style={[styles.confidenceBarFill, { width: `${dangerPercent}%` }]}
                                     start={{ x: 0, y: 0 }}
                                     end={{ x: 1, y: 0 }}
                                 />
                             </View>
                             <Text style={[styles.confidenceValue, { color: isDark ? '#fff' : '#000' }]}>
-                                {confidencePercent}%
+                                {dangerPercent}%
                             </Text>
                         </View>
                     </View>

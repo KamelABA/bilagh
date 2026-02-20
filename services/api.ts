@@ -266,6 +266,8 @@ export interface BoundingBox {
     label_ar: string;
     confidence: number;
     severity_score: number;
+    danger_score?: number;
+    danger_level?: 'none' | 'low' | 'medium' | 'high' | 'critical';
     severity_level: 'none' | 'low' | 'medium' | 'high';
     color: string;
     bbox: {
@@ -289,6 +291,8 @@ export interface PredictionResult {
     damage_label_ar: string | null;
     confidence: number;
     severity_score: number;
+    danger_score?: number;
+    danger_level?: 'none' | 'low' | 'medium' | 'high' | 'critical';
     severity: 'none' | 'low' | 'medium' | 'high';
     color: string;
     bounding_boxes: BoundingBox[];

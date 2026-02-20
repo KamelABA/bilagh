@@ -161,9 +161,15 @@
         "damageType": "نوع الضرر",
         "severity": "الخطورة",
         "confidence": "درجة الثقة",
+        "dangerScore": "مؤشر الخطر",
+        "dangerLevel": "مستوى الخطر",
         "allPredictions": "جميع التنبؤات",
         "createReport": "إنشاء بلاغ",
         "severityScale": "مقياس الخطورة (0-1)",
+        "dangerLow": "منخفض",
+        "dangerMedium": "متوسط",
+        "dangerHigh": "عالي",
+        "dangerCritical": "حرج",
         "roadIsGood": "الطريق جيد",
         "roadConditionGood": "حالة الطريق جيدة",
         "confidenceScore": "درجة الثقة في التحليل",
@@ -340,6 +346,7 @@
         "priorityRoutine": "أ4 - روتيني",
         "priorityMonitor": "أ5 - مراقبة",
         "confidence": "درجة الثقة",
+        "dangerScore": "مؤشر الخطر",
         "roadType": "نوع الطريق",
         "roadMain": "طريق رئيسي",
         "roadSecondary": "طريق ثانوي",
@@ -424,11 +431,11 @@
         },
         "explanations": {
             "noDamageDetected": "لم يتم اكتشاف أي ضرر في الطريق في هذه الصورة.",
-            "damageDetected": "تم اكتشاف {type} بنسبة ثقة {confidence}% (خطورة {severity})."
+            "damageDetected": "تم اكتشاف {type} بمؤشر خطر {dangerScore}% (خطورة {severity})."
         },
         "reasons": {
-            "lowConfidence": "نسبة الثقة في الكشف أقل من 50%",
-            "moderateConfidence": "نسبة الثقة في الكشف متوسطة (50-70%)",
+            "lowConfidence": "مؤشر الخطر المكتشف أقل من 50%",
+            "moderateConfidence": "مؤشر الخطر المكتشف متوسط (50-70%)",
             "multipleDetections": "تم اكتشاف مناطق ضرر متعددة",
             "smallDamageArea": "منطقة الضرر المكتشفة صغيرة نسبياً",
             "generalUncertainty": "قد يستفيد الذكاء الاصطناعي من ملاحظاتك"
