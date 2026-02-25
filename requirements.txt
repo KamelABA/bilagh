@@ -8,7 +8,7 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-bcrypt==4.1.2
+bcrypt==4.0.1
 python-multipart==0.0.6
 python-dotenv==1.0.0
 email-validator==2.1.0
@@ -16,5 +16,10 @@ httpx>=0.25.0
 cloudinary>=1.36.0
 Pillow>=10.0.0
 numpy>=1.24.0
-tensorflow>=2.15.0
-ultralytics>=8.0.0
+
+# ── ML Inference (lightweight — no PyTorch needed) ─────────────────────────
+# tflite-runtime : ~20 MB install / ~30 MB RAM  (Keras binary detector)
+# onnxruntime    : ~15 MB install / ~80 MB RAM  (YOLO type classifier)
+# Total RAM      : ~260 MB  ✅  (safe for Railway / Render free tier)
+tflite-runtime>=2.14.0
+onnxruntime>=1.16.0

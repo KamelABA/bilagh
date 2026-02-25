@@ -1,7 +1,24 @@
+## Railway Environment Variables
+## Copy these into Railway → Your Project → Variables tab
+
+# ── Required ──────────────────────────────────────────────────────────────────
 DATABASE_URL=mongodb+srv://kamelbilagh:kamelbilagh@cluster0.6vbwfjv.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
-SECRET_KEY=8GxsLnXww4MzxPLBZvTK-UqtiUg9CDVJ3e2s9z-gjwk
+SECRET_KEY=bilagh-secret-key-change-me-2024
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# ── Cloudinary (image uploads) ────────────────────────────────────────────────
 CLOUDINARY_CLOUD_NAME=dtiji2s4k
 CLOUDINARY_API_KEY=433893314248796
 CLOUDINARY_API_SECRET=4Uj51eHZ9_MQRr1LVSHP1H2dRLk
+
+# ── ML Models (auto-downloaded at startup) ────────────────────────────────────
+# YOLO model: downloaded automatically from Hugging Face (no URL needed)
+#
+# TFLite Keras model: set this to the public URL of road_damage_model.tflite
+# Upload road_damage_model.tflite (1.8MB) to:
+#   - Hugging Face: https://huggingface.co/new  (free, best option)
+#   - Google Drive: share publicly, use direct download link
+# Then paste the URL below:
+YOLO_MODEL_URL=https://huggingface.co/KamelABA/bilagh-models/resolve/main/road_damage_yolo.onnx
+TFLITE_MODEL_URL=https://huggingface.co/KamelABA/bilagh-models/resolve/main/road_damage_model.tflite

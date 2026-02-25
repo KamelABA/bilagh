@@ -1,12 +1,12 @@
 """
-Keras Binary Damage Classifier
-═══════════════════════════════
-Role: Secondary texture-damage detector.
-  • Input : raw image bytes
-  • Output: single float `confidence` ∈ [0, 1] = probability of road damage
-  • Called ONLY from predict_hybrid.py when YOLO finds nothing.
-  • Keras should NOT make the final "is_road / not_road" decision on its own —
-    that judgement is made in the hybrid pipeline using BOTH models.
+Keras Binary Damage Classifier — TFLite Runtime Version
+═══════════════════════════════════════════════════════════
+Uses tflite-runtime instead of full TensorFlow:
+  Full TF:      ~400 MB RAM
+  tflite-runtime: ~30 MB RAM  ← safe for Render free tier (512 MB)
+
+Model input : (1, 128, 128, 3)  float32 normalized 0-1
+Model output: (1, 1)            sigmoid → damage probability
 """
 
 import os
@@ -15,84 +15,100 @@ from PIL import Image
 import io
 from typing import Dict, Any
 
+# ── TFLite runtime (lightweight, ~30 MB RAM) ─────────────────────────────────
+KERAS_AVAILABLE = False
+_interpreter   = None
+
 try:
-    import tensorflow as tf
-    from tensorflow import keras
+    import tflite_runtime.interpreter as tflite
     KERAS_AVAILABLE = True
+    _BACKEND = "tflite_runtime"
 except ImportError:
-    KERAS_AVAILABLE = False
-    print("WARNING: TensorFlow not installed.")
+    try:
+        # Fallback: TFLite bundled inside full TensorFlow
+        import tensorflow as tf
+        tflite = tf.lite
+        KERAS_AVAILABLE = True
+        _BACKEND = "tensorflow_lite"
+    except ImportError:
+        tflite = None
+        _BACKEND = "none"
 
-MODEL_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "road_damage_model (1).keras"
-)
+# ── Model path ────────────────────────────────────────────────────────────────
+BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH  = os.path.join(BASE_DIR, "road_damage_model.tflite")
 
-_model = None
+# Input size expected by the model (matches training: 128x128)
+INPUT_SIZE  = (128, 128)
 
 
 def load_model():
-    global _model
+    global _interpreter
+    if _interpreter is not None:
+        return _interpreter
     if not KERAS_AVAILABLE:
-        raise RuntimeError("TensorFlow is not installed.")
-    if _model is None:
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(f"Keras model not found at {MODEL_PATH}")
-        print(f"Loading Keras model from {MODEL_PATH}...")
-        _model = keras.models.load_model(MODEL_PATH)
-        print(f"Keras model ready. Input: {_model.input_shape}")
-    return _model
+        raise RuntimeError("Neither tflite_runtime nor tensorflow is installed.")
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"TFLite model not found: {MODEL_PATH}")
+
+    print(f"Loading TFLite model ({os.path.getsize(MODEL_PATH)/1024/1024:.1f} MB)...")
+    _interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+    _interpreter.allocate_tensors()
+
+    inp  = _interpreter.get_input_details()[0]
+    out  = _interpreter.get_output_details()[0]
+    print(f"TFLite ready. Input: {inp['shape']}  Output: {out['shape']}  Backend: {_BACKEND}")
+    return _interpreter
 
 
-def preprocess_image(image: Image.Image, target_size=(224, 224)) -> np.ndarray:
-    image = image.resize(target_size, Image.Resampling.LANCZOS)
-    arr   = np.array(image).astype("float32") / 255.0
-    return np.expand_dims(arr, axis=0)
+def preprocess(image: Image.Image) -> np.ndarray:
+    image = image.resize(INPUT_SIZE, Image.Resampling.LANCZOS)
+    arr   = np.array(image, dtype=np.float32) / 255.0
+    return np.expand_dims(arr, axis=0)          # (1, 128, 128, 3)
 
 
 def predict_damage(image_data: bytes) -> Dict[str, Any]:
     """
-    Run the Keras binary classifier.
-
-    Returns a flat dict with:
-      confidence (float): raw sigmoid output, 0=clean 1=damaged
-      detected   (bool):  confidence >= 0.65
+    Run TFLite binary classifier.
+    Returns: { confidence: float, detected: bool, ... }
     """
     if not KERAS_AVAILABLE:
-        return _error("TensorFlow not installed.")
+        return _error("tflite_runtime not installed.")
 
     try:
-        model = load_model()
+        interp = load_model()
 
         image = Image.open(io.BytesIO(image_data))
         if image.mode != "RGB":
             image = image.convert("RGB")
         orig_w, orig_h = image.size
 
-        if orig_w < 50 or orig_h < 50:
-            return _error("Image too small (min 50×50).")
+        if orig_w < 32 or orig_h < 32:
+            return _error("Image too small (min 32×32).")
 
-        target = model.input_shape[1:3]          # (H, W)
-        arr    = preprocess_image(image, target_size=target)
-        prob   = float(model.predict(arr, verbose=0)[0][0])
+        inp_details = interp.get_input_details()
+        out_details = interp.get_output_details()
 
-        print(f"DEBUG [Keras] damage_probability={prob:.4f}")
+        arr = preprocess(image)
+        interp.set_tensor(inp_details[0]["index"], arr)
+        interp.invoke()
 
-        detected = prob >= 0.65
+        prob = float(interp.get_tensor(out_details[0]["index"])[0][0])
+        print(f"DEBUG [TFLite Keras] damage_probability={prob:.4f}")
 
         return {
-            "success":        True,
-            "is_road":        None,         # decided by hybrid pipeline
-            "detected":       detected,
-            "confidence":     prob,
-            "image_size":     {"width": orig_w, "height": orig_h},
-            "model_type":     "keras_binary",
+            "success":    True,
+            "is_road":    None,      # decided by predict_hybrid
+            "detected":   prob >= 0.65,
+            "confidence": prob,
+            "image_size": {"width": orig_w, "height": orig_h},
+            "model_type": f"tflite_binary ({_BACKEND})",
         }
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return _error(f"Keras error: {e}")
+        return _error(f"TFLite error: {e}")
 
 
 def _error(msg: str) -> Dict[str, Any]:
@@ -105,8 +121,7 @@ def _error(msg: str) -> Dict[str, Any]:
     }
 
 
-# ── Utility helpers (used elsewhere) ─────────────────────────────────────────
-
+# ── Utility helpers ───────────────────────────────────────────────────────────
 def get_severity_level(score: float) -> str:
     if score < 0.33: return "low"
     if score < 0.66: return "medium"
@@ -120,18 +135,12 @@ def get_severity_color(score: float) -> str:
 
 
 def get_model_info() -> Dict[str, Any]:
-    info = {
-        "available":    KERAS_AVAILABLE,
-        "model_path":   MODEL_PATH,
-        "model_exists": os.path.exists(MODEL_PATH),
-        "role":         "Secondary: texture-damage binary classifier (used when YOLO finds nothing)",
+    return {
+        "available":     KERAS_AVAILABLE,
+        "backend":       _BACKEND,
+        "model_path":    MODEL_PATH,
+        "model_exists":  os.path.exists(MODEL_PATH),
+        "input_size":    list(INPUT_SIZE),
+        "role":          "Binary damage detector (yes/no) — TFLite for low memory usage",
+        "memory_usage":  "~30 MB (tflite) vs ~400 MB (full TensorFlow)",
     }
-    if KERAS_AVAILABLE and os.path.exists(MODEL_PATH):
-        try:
-            m = load_model()
-            info["input_shape"]    = str(m.input_shape)
-            info["output_shape"]   = str(m.output_shape)
-            info["num_parameters"] = m.count_params()
-        except Exception as e:
-            info["load_error"] = str(e)
-    return info
