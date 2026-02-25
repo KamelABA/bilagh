@@ -1,3 +1,9 @@
+import sys, io
+# Force UTF-8 output on Windows (avoids UnicodeEncodeError for Arabic/emoji in print())
+if sys.stdout.encoding != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 import asyncio
 import traceback
 from concurrent.futures import ThreadPoolExecutor

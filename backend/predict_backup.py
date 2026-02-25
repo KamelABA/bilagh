@@ -19,12 +19,12 @@ try:
         DAMAGE_LABELS,
         DAMAGE_LABELS_AR
     )
-    print("✓ Using HYBRID mode: Keras + YOLO")
-    print("  • Keras: Damage detection (binary)")
-    print("  • YOLO: Type classification")
+    print("[OK] Using HYBRID mode: Keras + YOLO")
+    print("  - Keras: Damage detection (binary)")
+    print("  - YOLO: Type classification")
     HYBRID_MODE = True
 except ImportError as e:
-    print(f"✗ Hybrid mode failed: {e}")
+    print(f"[WARN] Hybrid mode failed: {e}")
     print("  Falling back to single model...")
     HYBRID_MODE = False
 
@@ -230,7 +230,7 @@ if not HYBRID_MODE:
                     severity_level = get_severity_level(severity_score)
                     
                     # Map class ID to damage class
-damage_class = DAMAGE_CLASSES.get(class_id % len(DAMAGE_CLASSES), "D40")
+                    damage_class = DAMAGE_CLASSES.get(class_id % len(DAMAGE_CLASSES), "D40")
                     
                     # Track detection
                     road_related_classes.append(class_id)

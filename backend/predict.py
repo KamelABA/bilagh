@@ -19,12 +19,12 @@ try:
         DAMAGE_LABELS,
         DAMAGE_LABELS_AR
     )
-    print("✓ Using HYBRID mode: Keras + YOLO")
-    print("  • Keras: Damage detection (binary)")
-    print("  • YOLO: Type classification")
+    print("[OK] Using HYBRID mode: Keras + YOLO")
+    print("  - Keras: Damage detection (binary)")
+    print("  - YOLO: Type classification")
     HYBRID_MODE = True
 except ImportError as e:
-    print(f"✗ Hybrid mode failed: {e}")
+    print(f"[WARN] Hybrid mode failed: {e}")
     print("  Falling back to YOLO-only mode...")
     HYBRID_MODE = False
     

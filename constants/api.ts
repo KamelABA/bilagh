@@ -1,17 +1,15 @@
 
 // ─── API Configuration ───────────────────────────────────────────────────────
-// PRODUCTION: Railway-hosted backend — works on any WiFi / mobile network
+// ⚠️  DEVELOPMENT MODE — Railway URL is being redeployed
+// Switch back to PRODUCTION_API_URL once Railway is live again.
 const PRODUCTION_API_URL = 'https://web-production-32b2a.up.railway.app';
 
-// DEVELOPMENT ONLY: uncomment the lines below and set API_URL = DEV_API_URL
-// when you need to test against the local backend on the same WiFi network.
+// Local backend — phone and PC must be on the same WiFi
 export const LOCAL_IP = '192.168.2.224';
-// const DEV_API_URL = Platform.OS === 'web'
-//     ? 'http://localhost:8000'
-//     : `http://${LOCAL_IP}:8000`;
+const DEV_API_URL = `http://${LOCAL_IP}:8000`;
 
-// ✅ Always use production so the APK works on ANY network
-export const API_URL = PRODUCTION_API_URL;
+// 👇 Change to PRODUCTION_API_URL once Railway redeploy is done
+export const API_URL = DEV_API_URL;
 
 export const API_ENDPOINTS = {
     // Auth
