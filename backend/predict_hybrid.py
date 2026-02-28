@@ -18,12 +18,11 @@ PIPELINE (2-step)
       Detected → D00/D10/D20/D40 + danger score
       Not detected → default D20 (texture/alligator crack)
 
-YOLO CLASS MAP (ozair23/yolov8-road-damage-detector — RDD2022)
-  0: alligator crack   → D20
-  1: transverse crack  → D10
-  2: longitudinal crack → D00
-  3: other corruption  → D20
-  4: Pothole           → D40
+YOLO CLASS MAP (best (3).pt — custom-trained RDD2022)
+  0: D00 — Longitudinal Crack
+  1: D10 — Transverse Crack
+  2: D20 — Alligator Crack
+  3: D40 — Pothole
 """
 
 import os
@@ -51,17 +50,18 @@ BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 YOLO_ONNX_PATH  = os.path.join(BASE_DIR, "road_damage_yolo.onnx")
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-KERAS_DAMAGE_THRESHOLD = 0.65
-KERAS_ROAD_THRESHOLD   = 0.20
-YOLO_CONF_THRESHOLD    = 0.35
+KERAS_DAMAGE_THRESHOLD   = 0.85   # Keras must be 85%+ to consider damage
+KERAS_ROAD_THRESHOLD     = 0.20   # Below 20% = not a road
+KERAS_OVERRIDE_THRESHOLD = 0.95   # Keras must be 95%+ to override YOLO "no detection"
+YOLO_CONF_THRESHOLD      = 0.50   # YOLO must be 50%+ confident to confirm damage
 
 # ── Class mapping ─────────────────────────────────────────────────────────────
+# best (3).pt class order (4 classes, output shape: 1×8×8400)
 DAMAGE_CLASSES = {
-    0: "D20",  # alligator crack
-    1: "D10",  # transverse crack
-    2: "D00",  # longitudinal crack
-    3: "D20",  # other corruption
-    4: "D40",  # pothole
+    0: "D00",  # Longitudinal Crack
+    1: "D10",  # Transverse Crack
+    2: "D20",  # Alligator Crack
+    3: "D40",  # Pothole
 }
 DAMAGE_LABELS = {
     "D00": "Longitudinal Crack",
@@ -128,22 +128,22 @@ def _run_yolo_onnx(image: Image.Image):
 
     inp_tensor, scale, pad_x, pad_y = _preprocess_yolo(image)
     input_name = session.get_inputs()[0].name
-    raw = session.run(None, {input_name: inp_tensor})[0]  # (1, 9, 8400)
+    raw = session.run(None, {input_name: inp_tensor})[0]  # (1, 4+num_classes, 8400)
 
-    # raw shape: (1, num_classes+4, num_anchors)
-    output = raw[0]  # (9, 8400)
+    # raw shape: (1, 4+num_classes, num_anchors) — works for any number of classes
+    output = raw[0]  # (4+num_classes, 8400)
     # rows 0-3: cx, cy, w, h (normalised to 640px)
-    # rows 4-8: class scores (5 classes)
-    boxes      = output[:4, :].T    # (8400, 4)
-    class_logits = output[4:, :].T  # (8400, 5)
+    # rows 4+:  class scores
+    boxes        = output[:4, :].T    # (8400, 4)
+    class_logits = output[4:, :].T   # (8400, num_classes)
 
     class_confs  = class_logits.max(axis=1)
     class_ids    = class_logits.argmax(axis=1)
 
     keep = class_confs >= YOLO_CONF_THRESHOLD
-    boxes      = boxes[keep]
-    class_confs= class_confs[keep]
-    class_ids  = class_ids[keep]
+    boxes       = boxes[keep]
+    class_confs = class_confs[keep]
+    class_ids   = class_ids[keep]
 
     detections = []
     for i in range(len(boxes)):
@@ -302,22 +302,32 @@ def predict_damage(image_data: bytes) -> Dict[str, Any]:
                     model_type="hybrid_keras_onnx",
                     note=f"Keras: {keras_prob:.1%} damage. YOLO ONNX: {DAMAGE_LABELS[damage_type]} ({best['conf']:.1%}).",
                 )
-            # YOLO found no box → texture damage
-            print("DEBUG [Step2 YOLO] No box → D20 (texture damage)")
-            return _damage_result(
-                damage_type="D20", confidence=keras_prob, keras_confidence=keras_prob,
-                image_w=orig_w, image_h=orig_h, model_type="keras_texture",
-                note=f"Keras: {keras_prob:.1%} damage. YOLO found no box → Alligator Crack (texture).",
-            )
+            # YOLO found no box → check if Keras is confident enough to override
+            if keras_prob >= KERAS_OVERRIDE_THRESHOLD:
+                # Keras is very confident (95%+) even though YOLO sees nothing → texture damage
+                print(f"DEBUG [Step2 YOLO] No box but Keras {keras_prob:.1%} >= 95% → D20 (texture damage)")
+                return _damage_result(
+                    damage_type="D20", confidence=keras_prob, keras_confidence=keras_prob,
+                    image_w=orig_w, image_h=orig_h, model_type="keras_texture",
+                    note=f"Keras: {keras_prob:.1%} damage. YOLO found no box → Alligator Crack (texture).",
+                )
+            else:
+                # Keras < 95% and YOLO sees nothing → likely false positive, filter it out
+                print(f"DEBUG [Step2 YOLO] No box & Keras {keras_prob:.1%} < 95% → filtered as false positive")
+                return _clean_road(orig_w, orig_h, keras_prob)
         except Exception as e:
             print(f"DEBUG [Step2 YOLO] Error: {e}")
 
-    # Fallback: Keras-only
-    return _damage_result(
-        damage_type="D20", confidence=keras_prob, keras_confidence=keras_prob,
-        image_w=orig_w, image_h=orig_h, model_type="keras_only",
-        note="YOLO unavailable. Keras-only result.",
-    )
+    # Fallback: Keras-only — only report damage if very confident
+    if keras_prob >= KERAS_OVERRIDE_THRESHOLD:
+        return _damage_result(
+            damage_type="D20", confidence=keras_prob, keras_confidence=keras_prob,
+            image_w=orig_w, image_h=orig_h, model_type="keras_only",
+            note="YOLO unavailable. Keras very confident → generic damage.",
+        )
+    else:
+        print(f"DEBUG [Fallback] Keras {keras_prob:.1%} < 95% & YOLO unavailable → clean road")
+        return _clean_road(orig_w, orig_h, keras_prob)
 
 
 def _yolo_only(img, orig_w, orig_h):
@@ -347,9 +357,10 @@ def get_model_info() -> Dict[str, Any]:
         "yolo_model":      YOLO_ONNX_PATH,
         "yolo_model_exists": os.path.exists(YOLO_ONNX_PATH),
         "thresholds": {
-            "keras_damage": KERAS_DAMAGE_THRESHOLD,
-            "keras_road":   KERAS_ROAD_THRESHOLD,
-            "yolo_conf":    YOLO_CONF_THRESHOLD,
+            "keras_damage":   KERAS_DAMAGE_THRESHOLD,
+            "keras_road":     KERAS_ROAD_THRESHOLD,
+            "keras_override": KERAS_OVERRIDE_THRESHOLD,
+            "yolo_conf":      YOLO_CONF_THRESHOLD,
         },
         "damage_types":    DAMAGE_LABELS,
         "damage_types_ar": DAMAGE_LABELS_AR,
