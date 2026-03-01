@@ -1,22 +1,26 @@
 """
-Hybrid Road Damage Prediction — ONNX Runtime Version
+Hybrid Road Damage Prediction — YOLO-First Architecture
 ══════════════════════════════════════════════════════════
 Uses onnxruntime instead of ultralytics/PyTorch.
 
 Build time comparison:
-  ultralytics + torch : ~800 MB download, 20+ min build ❌
-  onnxruntime         : ~15 MB download,  1 min build  ✅
+  ultralytics + torch : ~800 MB download, 20+ min build
+  onnxruntime         : ~15 MB download,  1 min build
 
-PIPELINE (2-step)
-─────────────────
-  Step 1 ─ KERAS TFLite (binary damage detector)
-      prob >= 0.65  → damage detected → Step 2
-      0.20–0.64     → clean road
-      < 0.20        → not a road
+PIPELINE (YOLO-first, Keras-supplementary)
+──────────────────────────────────────────
+  Step 1 — YOLO ONNX (primary detector)
+      Runs object detection for D00/D10/D20/D40.
+      If detected with confidence >= threshold → DAMAGE CONFIRMED
+      If nothing detected → Step 2
 
-  Step 2 ─ YOLO ONNX (type + danger + bounding box)
-      Detected → D00/D10/D20/D40 + danger score
-      Not detected → default D20 (texture/alligator crack)
+  Step 2 — KERAS TFLite (supplementary check)
+      Only used when YOLO finds nothing.
+      prob >= 0.50 → NOT a road (Keras is over-sensitive, so high prob = not a road image)
+      prob <  0.50 → Clean road (low Keras score = normal road surface)
+
+  NOTE: The Keras model is over-sensitive (predicts 98% damage on random noise).
+  It cannot be trusted as a primary detector. YOLO is the reliable model.
 
 YOLO CLASS MAP (best (3).pt — custom-trained RDD2022)
   0: D00 — Longitudinal Crack
@@ -50,13 +54,12 @@ BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 YOLO_ONNX_PATH  = os.path.join(BASE_DIR, "road_damage_yolo.onnx")
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-KERAS_DAMAGE_THRESHOLD   = 0.70   # Was 0.65 (too many false positives) → 0.70 is balanced
-KERAS_ROAD_THRESHOLD     = 0.20   # Below 20% = not a road
-KERAS_OVERRIDE_THRESHOLD = 0.90   # Keras must be 90%+ to override YOLO "no detection"
-YOLO_CONF_THRESHOLD      = 0.40   # YOLO must be 40%+ confident to confirm damage
+YOLO_CONF_THRESHOLD      = 0.25   # YOLO confidence threshold (lowered from 0.40 for better recall)
+YOLO_HIGH_CONF           = 0.50   # High-confidence YOLO detection (certain damage)
+KERAS_NOT_ROAD_THRESHOLD = 0.15   # Below 15% Keras = likely not a road at all
 
 # ── Class mapping ─────────────────────────────────────────────────────────────
-# best (3).pt class order (4 classes, output shape: 1×8×8400)
+# best (3).pt class order (4 classes, output shape: 1x8x8400)
 DAMAGE_CLASSES = {
     0: "D00",  # Longitudinal Crack
     1: "D10",  # Transverse Crack
@@ -97,7 +100,7 @@ def load_yolo_model():
 
 
 def _preprocess_yolo(image: Image.Image, size: int = 640) -> tuple:
-    """Resize + normalize to (1, 3, 640, 640) float32. Returns (tensor, scale_x, scale_y, pad_x, pad_y)."""
+    """Resize + normalize to (1, 3, 640, 640) float32. Returns (tensor, scale, pad_x, pad_y)."""
     orig_w, orig_h = image.size
     # letterbox resize keeping aspect ratio
     scale = min(size / orig_w, size / orig_h)
@@ -112,10 +115,45 @@ def _preprocess_yolo(image: Image.Image, size: int = 640) -> tuple:
     canvas.paste(resized, (pad_x, pad_y))
 
     arr  = np.array(canvas, dtype=np.float32) / 255.0
-    arr  = arr.transpose(2, 0, 1)           # HWC → CHW
-    arr  = np.expand_dims(arr, axis=0)      # → (1, 3, 640, 640)
+    arr  = arr.transpose(2, 0, 1)           # HWC -> CHW
+    arr  = np.expand_dims(arr, axis=0)      # -> (1, 3, 640, 640)
 
     return arr, scale, pad_x, pad_y
+
+
+def _nms(detections, iou_threshold=0.5):
+    """Simple non-maximum suppression to remove overlapping boxes."""
+    if len(detections) <= 1:
+        return detections
+
+    # Sort by confidence (highest first)
+    detections.sort(key=lambda d: d["conf"], reverse=True)
+    keep = []
+
+    while detections:
+        best = detections.pop(0)
+        keep.append(best)
+        remaining = []
+        for det in detections:
+            iou = _compute_iou(best, det)
+            if iou < iou_threshold:
+                remaining.append(det)
+        detections = remaining
+
+    return keep
+
+
+def _compute_iou(a, b):
+    """Compute IoU between two detection dicts with x1,y1,x2,y2."""
+    x1 = max(a["x1"], b["x1"])
+    y1 = max(a["y1"], b["y1"])
+    x2 = min(a["x2"], b["x2"])
+    y2 = min(a["y2"], b["y2"])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    area_a = max(0, a["x2"] - a["x1"]) * max(0, a["y2"] - a["y1"])
+    area_b = max(0, b["x2"] - b["x1"]) * max(0, b["y2"] - b["y1"])
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0
 
 
 def _run_yolo_onnx(image: Image.Image):
@@ -132,7 +170,7 @@ def _run_yolo_onnx(image: Image.Image):
 
     # raw shape: (1, 4+num_classes, num_anchors) — works for any number of classes
     output = raw[0]  # (4+num_classes, 8400)
-    # rows 0-3: cx, cy, w, h (normalised to 640px)
+    # rows 0-3: cx, cy, w, h (in 640px space)
     # rows 4+:  class scores
     boxes        = output[:4, :].T    # (8400, 4)
     class_logits = output[4:, :].T   # (8400, num_classes)
@@ -157,14 +195,21 @@ def _run_yolo_onnx(image: Image.Image):
         y1 = max(0, min(orig_h, int(y1)))
         x2 = max(0, min(orig_w, int(x2)))
         y2 = max(0, min(orig_h, int(y2)))
+
+        # Filter out tiny boxes (likely noise)
+        box_w = x2 - x1
+        box_h = y2 - y1
+        if box_w < 10 or box_h < 10:
+            continue
+
         detections.append({
             "class_id": int(class_ids[i]),
             "conf":     float(class_confs[i]),
             "x1": x1, "y1": y1, "x2": x2, "y2": y2,
         })
 
-    # sort by confidence, return best
-    detections.sort(key=lambda d: d["conf"], reverse=True)
+    # Apply NMS to remove duplicate detections
+    detections = _nms(detections, iou_threshold=0.5)
     return detections
 
 
@@ -198,17 +243,43 @@ def get_damage_category(damage_type: str) -> dict:
 # ── Result builders ───────────────────────────────────────────────────────────
 
 def _damage_result(damage_type, confidence, keras_confidence, image_w, image_h,
-                   bbox=None, model_type="hybrid_keras_yolo", note=""):
+                   bbox=None, model_type="hybrid_keras_yolo", note="",
+                   all_detections=None):
     danger_score = calculate_danger_score(damage_type, confidence)
     danger_info  = calculate_danger_level(damage_type, confidence)
     category     = get_damage_category(damage_type)
     severity = "high" if confidence > 0.66 else "medium" if confidence > 0.33 else "low"
     color    = "#FF0000" if confidence > 0.66 else "#FFFF00" if confidence > 0.33 else "#FFA500"
-    bbox_entry = {
-        "class": damage_type, "label": DAMAGE_LABELS[damage_type],
-        "label_ar": DAMAGE_LABELS_AR[damage_type], "confidence": confidence,
-        "bbox": bbox or {"x1": 0, "y1": 0, "x2": image_w, "y2": image_h},
-    }
+
+    # Build bounding boxes list from all detections
+    bounding_boxes = []
+    all_predictions = []
+
+    if all_detections:
+        for det in all_detections:
+            dt = DAMAGE_CLASSES.get(det["class_id"], "D20")
+            bounding_boxes.append({
+                "class": dt,
+                "label": DAMAGE_LABELS[dt],
+                "label_ar": DAMAGE_LABELS_AR[dt],
+                "confidence": det["conf"],
+                "bbox": {"x1": det["x1"], "y1": det["y1"], "x2": det["x2"], "y2": det["y2"]},
+            })
+            all_predictions.append({
+                "class": dt,
+                "label": DAMAGE_LABELS[dt],
+                "confidence": det["conf"],
+            })
+    else:
+        bounding_boxes.append({
+            "class": damage_type, "label": DAMAGE_LABELS[damage_type],
+            "label_ar": DAMAGE_LABELS_AR[damage_type], "confidence": confidence,
+            "bbox": bbox or {"x1": 0, "y1": 0, "x2": image_w, "y2": image_h},
+        })
+        all_predictions.append({
+            "class": damage_type, "label": DAMAGE_LABELS[damage_type], "confidence": confidence,
+        })
+
     return {
         "success": True, "is_road": True, "detected": True,
         "damage_type": damage_type, "damage_label": DAMAGE_LABELS[damage_type],
@@ -219,9 +290,10 @@ def _damage_result(damage_type, confidence, keras_confidence, image_w, image_h,
         "danger_description": danger_info["danger_description"],
         "danger_description_ar": danger_info["danger_description_ar"],
         "severity_score": confidence, "severity": severity, "color": color,
-        "bounding_boxes": [bbox_entry],
-        "all_predictions": [{"class": damage_type, "label": DAMAGE_LABELS[damage_type], "confidence": confidence}],
-        "detection_count": 1, "image_size": {"width": image_w, "height": image_h},
+        "bounding_boxes": bounding_boxes,
+        "all_predictions": all_predictions,
+        "detection_count": len(bounding_boxes),
+        "image_size": {"width": image_w, "height": image_h},
         "message": (
             f"Road damage: {DAMAGE_LABELS[damage_type]} "
             f"(Conf: {confidence:.1%} | Danger: {danger_score:.0f}/100 | Level: {danger_info['danger_level']}/5)"
@@ -230,7 +302,7 @@ def _damage_result(damage_type, confidence, keras_confidence, image_w, image_h,
     }
 
 
-def _clean_road(w, h, prob):
+def _clean_road(w, h, prob, note=""):
     return {
         "success": True, "is_road": True, "detected": False,
         "damage_type": None, "damage_label": "No damage detected",
@@ -238,8 +310,8 @@ def _clean_road(w, h, prob):
         "danger_score": 0.0, "severity_score": 0.0, "severity": "none", "color": "#00CC44",
         "bounding_boxes": [], "all_predictions": [], "detection_count": 0,
         "image_size": {"width": w, "height": h},
-        "message": f"Road is in good condition. (Keras: {prob:.1%})",
-        "note": "Keras: damage probability below threshold.", "model_type": "keras_binary",
+        "message": f"Road is in good condition.",
+        "note": note or "No damage detected by YOLO.", "model_type": "yolo_onnx",
     }
 
 
@@ -252,7 +324,7 @@ def _not_road(w, h, prob):
         "bounding_boxes": [], "all_predictions": [], "detection_count": 0,
         "image_size": {"width": w, "height": h},
         "message": "This image does not appear to be a road.",
-        "note": f"Keras probability: {prob:.1%} (too low).", "model_type": "keras_binary",
+        "note": f"Keras probability: {prob:.1%} (very low).", "model_type": "keras_binary",
     }
 
 
@@ -260,8 +332,9 @@ def _not_road(w, h, prob):
 
 def predict_damage(image_data: bytes) -> Dict[str, Any]:
     """
-    Step 1 — KERAS TFLite: Is there damage? (binary yes/no)
-    Step 2 — YOLO ONNX:    What type + danger score?
+    YOLO-First Pipeline:
+    Step 1 - YOLO ONNX:  Detect damage type + location (primary)
+    Step 2 - Keras:      Only used as fallback signal when YOLO finds nothing
     """
     try:
         img = Image.open(io.BytesIO(image_data))
@@ -271,63 +344,65 @@ def predict_damage(image_data: bytes) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "detected": False, "message": f"Invalid image: {e}"}
 
-    # ── Step 1: Keras TFLite ──────────────────────────────────────────────────
-    if not KERAS_AVAILABLE:
-        return _yolo_only(img, orig_w, orig_h)
+    # Get Keras probability for supplementary info (but NOT as gatekeeper)
+    keras_prob = 0.0
+    if KERAS_AVAILABLE:
+        try:
+            keras_result = keras_predict_raw(image_data)
+            keras_prob = keras_result.get("confidence", 0.0)
+            print(f"DEBUG [Keras] prob={keras_prob:.4f} (supplementary only, not gatekeeper)")
+        except Exception as e:
+            print(f"DEBUG [Keras] Error (non-fatal): {e}")
 
-    keras_result = keras_predict_raw(image_data)
-    keras_prob   = keras_result.get("confidence", 0.0)
-    print(f"DEBUG [Step1 Keras] prob={keras_prob:.4f}")
-
-    if keras_prob < KERAS_ROAD_THRESHOLD:
+    # Very low Keras = definitely not a road image (faces, objects, etc.)
+    # Only use this check if Keras is available and probability is extremely low
+    if KERAS_AVAILABLE and keras_prob < KERAS_NOT_ROAD_THRESHOLD:
+        print(f"DEBUG [Filter] Keras {keras_prob:.1%} < {KERAS_NOT_ROAD_THRESHOLD:.0%} = not a road")
         return _not_road(orig_w, orig_h, keras_prob)
 
-    if keras_prob < KERAS_DAMAGE_THRESHOLD:
-        return _clean_road(orig_w, orig_h, keras_prob)
-
-    # ── Step 2: YOLO ONNX ────────────────────────────────────────────────────
-    print(f"DEBUG [Step1] Damage confirmed ({keras_prob:.1%}) → YOLO ONNX...")
-
+    # ── Step 1: YOLO ONNX (PRIMARY DETECTOR) ─────────────────────────────────
     if YOLO_AVAILABLE and os.path.exists(YOLO_ONNX_PATH):
         try:
             detections = _run_yolo_onnx(img)
+            print(f"DEBUG [YOLO] Found {len(detections)} detection(s)")
+
             if detections:
+                # Log all detections
+                for i, det in enumerate(detections):
+                    dt = DAMAGE_CLASSES.get(det["class_id"], "?")
+                    print(f"DEBUG [YOLO]   #{i+1}: {dt} conf={det['conf']:.2%} "
+                          f"box=({det['x1']},{det['y1']})-({det['x2']},{det['y2']})")
+
                 best = detections[0]
                 damage_type = DAMAGE_CLASSES.get(best["class_id"], "D20")
-                print(f"DEBUG [Step2 YOLO] {damage_type} conf={best['conf']:.2%}")
-                return _damage_result(
-                    damage_type=damage_type, confidence=best["conf"],
-                    keras_confidence=keras_prob, image_w=orig_w, image_h=orig_h,
-                    bbox={"x1": best["x1"], "y1": best["y1"], "x2": best["x2"], "y2": best["y2"]},
-                    model_type="hybrid_keras_onnx",
-                    note=f"Keras: {keras_prob:.1%} damage. YOLO ONNX: {DAMAGE_LABELS[damage_type]} ({best['conf']:.1%}).",
-                )
-            # YOLO found no box → check if Keras is confident enough to override
-            if keras_prob >= KERAS_OVERRIDE_THRESHOLD:
-                # Keras is very confident (95%+) even though YOLO sees nothing → texture damage
-                print(f"DEBUG [Step2 YOLO] No box but Keras {keras_prob:.1%} >= 95% → D20 (texture damage)")
-                return _damage_result(
-                    damage_type="D20", confidence=keras_prob, keras_confidence=keras_prob,
-                    image_w=orig_w, image_h=orig_h, model_type="keras_texture",
-                    note=f"Keras: {keras_prob:.1%} damage. YOLO found no box → Alligator Crack (texture).",
-                )
-            else:
-                # Keras < 95% and YOLO sees nothing → likely false positive, filter it out
-                print(f"DEBUG [Step2 YOLO] No box & Keras {keras_prob:.1%} < 95% → filtered as false positive")
-                return _clean_road(orig_w, orig_h, keras_prob)
-        except Exception as e:
-            print(f"DEBUG [Step2 YOLO] Error: {e}")
+                print(f"DEBUG [YOLO] Best: {damage_type} conf={best['conf']:.2%}")
 
-    # Fallback: Keras-only — only report damage if very confident
-    if keras_prob >= KERAS_OVERRIDE_THRESHOLD:
-        return _damage_result(
-            damage_type="D20", confidence=keras_prob, keras_confidence=keras_prob,
-            image_w=orig_w, image_h=orig_h, model_type="keras_only",
-            note="YOLO unavailable. Keras very confident → generic damage.",
-        )
-    else:
-        print(f"DEBUG [Fallback] Keras {keras_prob:.1%} < 95% & YOLO unavailable → clean road")
-        return _clean_road(orig_w, orig_h, keras_prob)
+                return _damage_result(
+                    damage_type=damage_type,
+                    confidence=best["conf"],
+                    keras_confidence=keras_prob,
+                    image_w=orig_w, image_h=orig_h,
+                    bbox={"x1": best["x1"], "y1": best["y1"],
+                          "x2": best["x2"], "y2": best["y2"]},
+                    model_type="yolo_onnx_primary",
+                    note=f"YOLO detected {damage_type} ({best['conf']:.1%}). Keras: {keras_prob:.1%}.",
+                    all_detections=detections,
+                )
+
+            # YOLO found nothing = road is clean
+            print(f"DEBUG [YOLO] No detections = clean road")
+            return _clean_road(orig_w, orig_h, keras_prob,
+                               note=f"YOLO: no damage detected. Keras: {keras_prob:.1%}.")
+
+        except Exception as e:
+            print(f"DEBUG [YOLO] Error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # ── Fallback: No YOLO available ───────────────────────────────────────────
+    print("DEBUG [Fallback] YOLO unavailable, no reliable detection possible")
+    return _clean_road(orig_w, orig_h, keras_prob,
+                       note="YOLO model unavailable. Cannot reliably detect damage.")
 
 
 def _yolo_only(img, orig_w, orig_h):
@@ -342,7 +417,8 @@ def _yolo_only(img, orig_w, orig_h):
                 damage_type=damage_type, confidence=best["conf"], keras_confidence=0.0,
                 image_w=orig_w, image_h=orig_h,
                 bbox={"x1": best["x1"], "y1": best["y1"], "x2": best["x2"], "y2": best["y2"]},
-                model_type="yolo_onnx_only", note="Keras unavailable. YOLO ONNX only.",
+                model_type="yolo_onnx_only", note="YOLO ONNX only.",
+                all_detections=detections,
             )
         return _clean_road(orig_w, orig_h, 0.0)
     except Exception as e:
@@ -351,16 +427,16 @@ def _yolo_only(img, orig_w, orig_h):
 
 def get_model_info() -> Dict[str, Any]:
     return {
-        "pipeline":       "Keras TFLite (damage? yes/no) → YOLO ONNX (type + danger)",
+        "pipeline":       "YOLO ONNX (primary detector) + Keras TFLite (supplementary)",
+        "architecture":   "YOLO-first: YOLO detects damage, Keras only filters non-road images",
         "keras_available": KERAS_AVAILABLE,
         "yolo_available":  YOLO_AVAILABLE,
         "yolo_model":      YOLO_ONNX_PATH,
         "yolo_model_exists": os.path.exists(YOLO_ONNX_PATH),
         "thresholds": {
-            "keras_damage":   KERAS_DAMAGE_THRESHOLD,
-            "keras_road":     KERAS_ROAD_THRESHOLD,
-            "keras_override": KERAS_OVERRIDE_THRESHOLD,
-            "yolo_conf":      YOLO_CONF_THRESHOLD,
+            "yolo_conf":       YOLO_CONF_THRESHOLD,
+            "yolo_high_conf":  YOLO_HIGH_CONF,
+            "keras_not_road":  KERAS_NOT_ROAD_THRESHOLD,
         },
         "damage_types":    DAMAGE_LABELS,
         "damage_types_ar": DAMAGE_LABELS_AR,
