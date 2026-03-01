@@ -194,6 +194,13 @@ async def create_report(report: schemas.ReportCreate, current_user: schemas.User
     new_report["id"] = str(res.inserted_id)
     return new_report
 
+@app.get("/reports/map")
+async def get_all_reports_for_map(current_user: schemas.User = Depends(auth.get_current_user)):
+    """Return ALL reports that have coordinates — for map display across all user types."""
+    query = {"latitude": {"$exists": True, "$ne": None}, "longitude": {"$exists": True, "$ne": None}}
+    cursor = db.reports.find(query).sort("created_at", -1).limit(500)
+    return [fix_id(r) for r in await cursor.to_list(length=500)]
+
 @app.get("/reports", response_model=List[schemas.Report])
 async def get_reports(skip: int = 0, limit: int = 100, status: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
     query = {"user_id": current_user.id}
@@ -308,6 +315,19 @@ async def mark_all_notifications_as_read(current_user: schemas.User = Depends(au
     return {"message": "All marked as read"}
 
 # Municipal Endpoints
+@app.get("/municipal/all-reports")
+async def get_all_reports_for_municipal(skip: int = 0, limit: int = 500, current_user: schemas.User = Depends(auth.get_current_user)):
+    """Return ALL reports regardless of status — for municipal map and overview."""
+    if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")
+    pipeline = [
+        {"$sort": {"created_at": -1}}, {"$skip": skip}, {"$limit": limit},
+        {"$addFields": {"userObjectId": {"$toObjectId": "$user_id"}}},
+        {"$lookup": {"from": "users", "localField": "userObjectId", "foreignField": "_id", "as": "user_info"}},
+        {"$unwind": "$user_info"}, {"$project": {"userObjectId": 0, "user_info.hashed_password": 0}}
+    ]
+    results = await db.reports.aggregate(pipeline).to_list(length=limit)
+    return [fix_id({**r, "user": fix_id(r["user_info"])}) for r in results]
+
 @app.get("/municipal/reports", response_model=List[schemas.ReportWithUser])
 async def get_verified_reports_for_municipal(skip: int = 0, limit: int = 100, status: Optional[str] = None, current_user: schemas.User = Depends(auth.get_current_user)):
     if current_user.role not in [UserRole.municipal, UserRole.ADMIN]: raise HTTPException(status_code=403, detail="Not authorized")

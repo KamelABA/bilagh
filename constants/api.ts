@@ -43,6 +43,9 @@ export const API_ENDPOINTS = {
     // Image Upload
     UPLOAD_IMAGE: `${API_URL}/upload-image`,
 
+    // Map (all reports with coordinates)
+    MAP_REPORTS: `${API_URL}/reports/map`,
+
     // Prediction
     PREDICT: `${API_URL}/predict`,
     MODEL_INFO: `${API_URL}/predict/model-info`,

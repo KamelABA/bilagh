@@ -77,12 +77,14 @@ export default function MapView({ userType }: MapViewProps) {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) return;
 
-            let endpoint = API_ENDPOINTS.REPORTS;
+            // All user types see ALL reports on the map
+            let endpoint = API_ENDPOINTS.MAP_REPORTS;
 
-            if (userType === 'municipal') {
-                endpoint = statusFilter === 'all'
-                    ? API_ENDPOINTS.MUNICIPAL_ALL_REPORTS
-                    : `${API_ENDPOINTS.MUNICIPAL_REPORTS}?status=${statusFilter}`;
+            if (userType === 'municipal' && statusFilter !== 'all') {
+                // Municipal can filter by status
+                endpoint = `${API_ENDPOINTS.MUNICIPAL_REPORTS}?status=${statusFilter}`;
+            } else if (userType === 'municipal' && statusFilter === 'all') {
+                endpoint = API_ENDPOINTS.MUNICIPAL_ALL_REPORTS;
             }
 
             const response = await fetch(endpoint, {
@@ -106,6 +108,7 @@ export default function MapView({ userType }: MapViewProps) {
                         createdAt: r.created_at || r.createdAt,
                     }));
                 setDamageReports(reports);
+                console.log(`[Map] Loaded ${reports.length} reports for ${userType} (filter: ${statusFilter})`);
             }
         } catch (error) {
             console.error('Error fetching reports for map:', error);
