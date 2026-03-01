@@ -20,13 +20,13 @@ import { WebView } from 'react-native-webview';
 
 const { width, height } = Dimensions.get('window');
 
-// Tiaret, Algeria coordinates - 100km radius (~0.9 degrees)
-const TIARET_CENTER = { latitude: 35.3711, longitude: 1.3171 };
-const TIARET_BOUNDS = {
-    north: 36.27,   // ~100km north
-    south: 34.47,   // ~100km south
-    east: 2.22,     // ~100km east
-    west: 0.32,     // ~100km west
+// Algeria coordinates - entire country
+const ALGERIA_CENTER = { latitude: 28.0339, longitude: 1.6596 };
+const ALGERIA_BOUNDS = {
+    north: 37.1,    // Mediterranean coast
+    south: 18.9,    // Southern border
+    east: 12.0,     // Eastern border (Tunisia/Libya)
+    west: -8.7,     // Western border (Morocco)
 };
 
 interface DamageReport {
@@ -138,7 +138,7 @@ export default function MapView({ userType }: MapViewProps) {
 
                 const { status } = await Location.requestForegroundPermissionsAsync();
                 if (status !== 'granted') {
-                    setLocation(TIARET_CENTER);
+                    setLocation(ALGERIA_CENTER);
                     setLoading(false);
                     return;
                 }
@@ -147,17 +147,17 @@ export default function MapView({ userType }: MapViewProps) {
                 const { latitude, longitude } = currentLocation.coords;
 
                 if (
-                    latitude >= TIARET_BOUNDS.south &&
-                    latitude <= TIARET_BOUNDS.north &&
-                    longitude >= TIARET_BOUNDS.west &&
-                    longitude <= TIARET_BOUNDS.east
+                    latitude >= ALGERIA_BOUNDS.south &&
+                    latitude <= ALGERIA_BOUNDS.north &&
+                    longitude >= ALGERIA_BOUNDS.west &&
+                    longitude <= ALGERIA_BOUNDS.east
                 ) {
                     setLocation({ latitude, longitude });
                 } else {
-                    setLocation(TIARET_CENTER);
+                    setLocation(ALGERIA_CENTER);
                 }
             } catch (error) {
-                setLocation(TIARET_CENTER);
+                setLocation(ALGERIA_CENTER);
             } finally {
                 setLoading(false);
             }
@@ -316,34 +316,26 @@ export default function MapView({ userType }: MapViewProps) {
             <body>
                 <div id="map"></div>
                 <script>
-                    // Tiaret boundaries
-                    var tiaretBounds = L.latLngBounds(
-                        L.latLng(${TIARET_BOUNDS.south}, ${TIARET_BOUNDS.west}),
-                        L.latLng(${TIARET_BOUNDS.north}, ${TIARET_BOUNDS.east})
+                    // Algeria boundaries
+                    var algeriaBounds = L.latLngBounds(
+                        L.latLng(${ALGERIA_BOUNDS.south}, ${ALGERIA_BOUNDS.west}),
+                        L.latLng(${ALGERIA_BOUNDS.north}, ${ALGERIA_BOUNDS.east})
                     );
 
                     var map = L.map('map', {
                         zoomControl: true,
                         attributionControl: true,
-                        maxBounds: tiaretBounds,
+                        maxBounds: algeriaBounds,
                         maxBoundsViscosity: 1.0,
-                        minZoom: ${userType === 'municipal' ? 9 : 10},
+                        minZoom: 5,
                         maxZoom: 18,
-                    }).setView([${location.latitude}, ${location.longitude}], ${userType === 'municipal' ? 11 : 12});
+                    }).setView([${location.latitude}, ${location.longitude}], 6);
 
                     // Add OpenStreetMap tiles
-                    L.tileLayer('${userType === 'municipal' ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png' : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}', {
-                        attribution: '© OpenStreetMap${userType === 'municipal' ? ', ©CartoDB' : ' | Tiaret, Algeria'}',
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '\u00a9 OpenStreetMap | Algeria',
                         maxZoom: 18,
-                        minZoom: ${userType === 'municipal' ? 9 : 10},
-                    }).addTo(map);
-
-                    // Add Tiaret boundary rectangle
-                    L.rectangle(tiaretBounds, {
-                        color: '${themeColor}',
-                        weight: 2,
-                        fillOpacity: 0,
-                        dashArray: '5, 10',
+                        minZoom: 5,
                     }).addTo(map);
 
                     // Add user location marker
