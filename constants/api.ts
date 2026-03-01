@@ -8,8 +8,8 @@ const PRODUCTION_API_URL = 'https://web-production-32b2a.up.railway.app';
 export const LOCAL_IP = '192.168.2.224';
 const DEV_API_URL = `http://${LOCAL_IP}:8000`;
 
-// 👇 Change to PRODUCTION_API_URL once Railway redeploy is done
-export const API_URL = DEV_API_URL;
+// 👇 Use PRODUCTION_API_URL for sharing, DEV_API_URL for local testing
+export const API_URL = PRODUCTION_API_URL;
 
 export const API_ENDPOINTS = {
     // Auth

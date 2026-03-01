@@ -1,0 +1,32 @@
+# Backend (not needed for mobile app)
+backend/
+.venv/
+
+# ML models (not needed for Expo build)
+*.pt
+*.onnx
+*.tflite
+*.keras
+
+# Cache and build artifacts
+.cache/
+dist/
+__pycache__/
+
+# Git
+.git/
+
+# Test files
+test_*.py
+
+# Docs
+*.md
+!README.md
+
+# Other unnecessary files
+requirements.txt
+runtime.txt
+Procfile
+render.yaml
+railway.json
+RAILWAY_ENV_VARIABLES.txt
