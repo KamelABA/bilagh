@@ -50,10 +50,10 @@ BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 YOLO_ONNX_PATH  = os.path.join(BASE_DIR, "road_damage_yolo.onnx")
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-KERAS_DAMAGE_THRESHOLD   = 0.85   # Keras must be 85%+ to consider damage
+KERAS_DAMAGE_THRESHOLD   = 0.70   # Was 0.65 (too many false positives) → 0.70 is balanced
 KERAS_ROAD_THRESHOLD     = 0.20   # Below 20% = not a road
-KERAS_OVERRIDE_THRESHOLD = 0.95   # Keras must be 95%+ to override YOLO "no detection"
-YOLO_CONF_THRESHOLD      = 0.50   # YOLO must be 50%+ confident to confirm damage
+KERAS_OVERRIDE_THRESHOLD = 0.90   # Keras must be 90%+ to override YOLO "no detection"
+YOLO_CONF_THRESHOLD      = 0.40   # YOLO must be 40%+ confident to confirm damage
 
 # ── Class mapping ─────────────────────────────────────────────────────────────
 # best (3).pt class order (4 classes, output shape: 1×8×8400)
