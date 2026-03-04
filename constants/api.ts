@@ -9,7 +9,7 @@ export const LOCAL_IP = '192.168.2.224';
 const DEV_API_URL = `http://${LOCAL_IP}:8000`;
 
 // 👇 Use PRODUCTION_API_URL for sharing, DEV_API_URL for local testing
-export const API_URL = PRODUCTION_API_URL;
+export const API_URL = DEV_API_URL;
 
 export const API_ENDPOINTS = {
     // Auth
@@ -42,9 +42,6 @@ export const API_ENDPOINTS = {
 
     // Image Upload
     UPLOAD_IMAGE: `${API_URL}/upload-image`,
-
-    // Map (all reports with coordinates)
-    MAP_REPORTS: `${API_URL}/reports/map`,
 
     // Prediction
     PREDICT: `${API_URL}/predict`,
