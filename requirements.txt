@@ -21,5 +21,5 @@ numpy>=1.24.0,<2.0
 # tflite-runtime : ~20 MB install / ~30 MB RAM  (Keras binary detector)
 # onnxruntime    : ~15 MB install / ~80 MB RAM  (YOLO type classifier)
 # Total RAM      : ~260 MB  ✅  (safe for Railway / Render free tier)
-tflite-runtime>=2.16.0
+tflite-runtime>=2.13.0,<=2.14.0
 onnxruntime>=1.16.0
