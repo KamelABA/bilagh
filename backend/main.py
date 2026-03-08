@@ -194,10 +194,14 @@ async def create_report(report: schemas.ReportCreate, current_user: schemas.User
     new_report["id"] = str(res.inserted_id)
     return new_report
 
-@app.get("/reports/map")
+@app.get("/reports/map", response_model=List[schemas.Report])
 async def get_all_reports_for_map(current_user: schemas.User = Depends(auth.get_current_user)):
-    """Return ALL reports that have coordinates — for map display across all user types."""
-    query = {"latitude": {"$exists": True, "$ne": None}, "longitude": {"$exists": True, "$ne": None}}
+    """Return ALL reports from ALL citizens that have coordinates — for map display."""
+    query = {
+        "latitude": {"$exists": True, "$ne": None},
+        "longitude": {"$exists": True, "$ne": None},
+        "type": {"$exists": True, "$ne": None},  # 'type' = the damage category (pothole/crack/debris)
+    }
     cursor = db.reports.find(query).sort("created_at", -1).limit(500)
     return [fix_id(r) for r in await cursor.to_list(length=500)]
 

@@ -19,6 +19,7 @@ export const API_ENDPOINTS = {
 
     // Reports (for users)
     REPORTS: `${API_URL}/reports`,
+    MAP_REPORTS: `${API_URL}/reports/map`, // Map (all reports with coordinates)
     REPORT_BY_ID: (id: string) => `${API_URL}/reports/${id}`,
 
     // Agent endpoints

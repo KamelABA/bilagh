@@ -5,7 +5,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
@@ -75,24 +75,33 @@ export default function MapView({ userType }: MapViewProps) {
     const fetchReports = useCallback(async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) return;
+            console.log(`[Map] Token found: ${!!token}, userType: ${userType}`);
+            if (!token) {
+                console.warn('[Map] No token - user not logged in');
+                return;
+            }
 
             // All user types see ALL reports on the map
             let endpoint = API_ENDPOINTS.MAP_REPORTS;
 
             if (userType === 'municipal' && statusFilter !== 'all') {
-                // Municipal can filter by status
                 endpoint = `${API_ENDPOINTS.MUNICIPAL_REPORTS}?status=${statusFilter}`;
             } else if (userType === 'municipal' && statusFilter === 'all') {
                 endpoint = API_ENDPOINTS.MUNICIPAL_ALL_REPORTS;
             }
 
+            console.log(`[Map] Fetching: ${endpoint}`);
+
             const response = await fetch(endpoint, {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
 
+            console.log(`[Map] Response status: ${response.status}`);
+
             if (response.ok) {
                 const data = await response.json();
+                console.log(`[Map] Raw data count: ${data.length}`);
+
                 const reports: DamageReport[] = data
                     .filter((r: any) => r.latitude && r.longitude)
                     .map((r: any) => ({
@@ -109,15 +118,76 @@ export default function MapView({ userType }: MapViewProps) {
                     }));
                 setDamageReports(reports);
                 console.log(`[Map] Loaded ${reports.length} reports for ${userType} (filter: ${statusFilter})`);
+            } else {
+                const errText = await response.text();
+                console.error(`[Map] Fetch failed: ${response.status} - ${errText}`);
             }
         } catch (error) {
-            console.error('Error fetching reports for map:', error);
+            console.error('[Map] Error fetching reports:', error);
         }
     }, [userType, statusFilter]);
+
 
     useEffect(() => {
         fetchReports();
     }, [fetchReports]);
+
+    // Inject markers into WebView whenever reports change
+    useEffect(() => {
+        if (!mapReady || !webViewRef.current) return;
+
+        const reportsToShow = statusFilter === 'all'
+            ? damageReports
+            : damageReports.filter(r => r.status === statusFilter);
+
+        console.log(`[Map] Injecting ${reportsToShow.length} markers into WebView`);
+
+        // Safely pass reports as JSON - avoids all string escaping issues
+        const reportsJson = JSON.stringify(reportsToShow.map(r => ({
+            id: r.id,
+            lat: r.latitude,
+            lng: r.longitude,
+            type: r.type || 'damage',
+            severity: r.severity || 'medium',
+            desc: r.description || r.location || '',
+            status: r.status || 'pending',
+        })));
+
+        const js = `
+            try {
+                var reports = ${reportsJson};
+                if (!window.leafletMap) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapError', message: 'window.leafletMap is not defined' }));
+                } else {
+                    if (window._damageLayer) {
+                        window._damageLayer.clearLayers();
+                    } else {
+                        window._damageLayer = L.layerGroup().addTo(window.leafletMap);
+                    }
+                    reports.forEach(function(r) {
+                        var color = r.severity === 'high' ? '#FF4B2B'
+                                  : r.severity === 'medium' ? '#FFD200' : '#4ECDC4';
+                        var marker = L.marker([r.lat, r.lng], {
+                            icon: L.divIcon({
+                                className: 'custom-marker',
+                                html: '<div style="width:32px;height:32px;background:' + color + ';border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.4);"></div>',
+                                iconSize: [32, 32],
+                                iconAnchor: [16, 32],
+                            })
+                        }).addTo(window._damageLayer);
+                        marker.bindPopup('<div style="text-align:center;font-family:sans-serif"><strong>' + r.type + '</strong><br><small>' + r.desc + '</small><br><em>' + r.status + '</em></div>');
+                        marker.on('click', function() {
+                            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'markerClick', reportId: r.id }));
+                        });
+                    });
+                }
+            } catch(e) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapError', message: e.toString() }));
+            }
+            true;
+        `;
+        webViewRef.current.injectJavaScript(js);
+    }, [damageReports, statusFilter, mapReady]);
 
     useEffect(() => {
         (async () => {
@@ -227,58 +297,8 @@ export default function MapView({ userType }: MapViewProps) {
         </TouchableOpacity>
     );
 
-    const generateMapHtml = () => {
+    const mapHtml = useMemo(() => {
         if (!location) return '';
-
-        const markers = filteredReports.map(report => `
-            L.marker([${report.latitude}, ${report.longitude}], {
-                icon: L.divIcon({
-                    className: 'custom-marker',
-                    html: \`<div style="
-                        width: 32px;
-                        height: 32px;
-                        background: ${getSeverityColor(report.severity)};
-                        border-radius: 50% 50% 50% 0;
-                        transform: rotate(-45deg);
-                        border: 3px solid white;
-                        box-shadow: 0 3px 10px rgba(0,0,0,0.4);
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                    "><span style="transform: rotate(45deg); color: white; font-size: 16px; font-weight: bold;">!</span></div>\`,
-                    iconSize: [32, 32],
-                    iconAnchor: [16, 32],
-                })
-            }).addTo(map)
-            .bindPopup(\`
-                <div style="min-width: 200px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                    <h3 style="margin: 0 0 8px 0; color: #333; font-size: 16px;">${report.type}</h3>
-                    <p style="margin: 0 0 8px 0; color: #666; font-size: 13px;">${report.description}</p>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <span style="
-                            background: ${getSeverityColor(report.severity)}20;
-                            color: ${getSeverityColor(report.severity)};
-                            padding: 4px 8px;
-                            border-radius: 12px;
-                            font-size: 11px;
-                            font-weight: 600;
-                        ">${getSeverityLabel(report.severity).toUpperCase()}</span>
-                        <span style="
-                            background: ${getStatusColor(report.status)}20;
-                            color: ${getStatusColor(report.status)};
-                            padding: 4px 8px;
-                            border-radius: 12px;
-                            font-size: 11px;
-                            font-weight: 600;
-                        ">${getStatusLabel(report.status).toUpperCase()}</span>
-                    </div>
-                    <p style="margin: 8px 0 0 0; color: #999; font-size: 11px;">${report.createdAt || ''}</p>
-                </div>
-            \`, { maxWidth: 300 })
-            .on('click', function() {
-                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'markerClick', reportId: ${report.id} }));
-            });
-        `).join('\n');
 
         return `
             <!DOCTYPE html>
@@ -316,60 +336,66 @@ export default function MapView({ userType }: MapViewProps) {
             <body>
                 <div id="map"></div>
                 <script>
-                    // Algeria boundaries
-                    var algeriaBounds = L.latLngBounds(
-                        L.latLng(${ALGERIA_BOUNDS.south}, ${ALGERIA_BOUNDS.west}),
-                        L.latLng(${ALGERIA_BOUNDS.north}, ${ALGERIA_BOUNDS.east})
-                    );
+                    if (!window.leafletMap) {
+                        // Algeria boundaries
+                        var algeriaBounds = L.latLngBounds(
+                            L.latLng(${ALGERIA_BOUNDS.south}, ${ALGERIA_BOUNDS.west}),
+                            L.latLng(${ALGERIA_BOUNDS.north}, ${ALGERIA_BOUNDS.east})
+                        );
 
-                    var map = L.map('map', {
-                        zoomControl: true,
-                        attributionControl: true,
-                        maxBounds: algeriaBounds,
-                        maxBoundsViscosity: 1.0,
-                        minZoom: 5,
-                        maxZoom: 18,
-                    }).setView([${location.latitude}, ${location.longitude}], 6);
+                        window.leafletMap = L.map('map', {
+                            zoomControl: true,
+                            attributionControl: true,
+                            maxBounds: algeriaBounds,
+                            maxBoundsViscosity: 1.0,
+                            minZoom: 5,
+                            maxZoom: 18,
+                        }).setView([${location.latitude}, ${location.longitude}], 6);
 
-                    // Add OpenStreetMap tiles
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '\u00a9 OpenStreetMap | Algeria',
-                        maxZoom: 18,
-                        minZoom: 5,
-                    }).addTo(map);
+                        // Add OpenStreetMap tiles
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '\u00a9 OpenStreetMap | Algeria',
+                            maxZoom: 18,
+                            minZoom: 5,
+                        }).addTo(window.leafletMap);
 
-                    // Add user location marker
-                    L.marker([${location.latitude}, ${location.longitude}], {
-                        icon: L.divIcon({
-                            className: 'user-location',
-                            html: '<div class="user-location-marker"></div>',
-                            iconSize: [20, 20],
-                            iconAnchor: [10, 10],
-                        })
-                    }).addTo(map)
-                    .bindPopup('<div style="text-align: center; font-family: sans-serif;"><strong>${t('map.yourLocation')}</strong></div>');
+                        // Add user location marker
+                        L.marker([${location.latitude}, ${location.longitude}], {
+                            icon: L.divIcon({
+                                className: 'user-location',
+                                html: '<div class="user-location-marker"></div>',
+                                iconSize: [20, 20],
+                                iconAnchor: [10, 10],
+                            })
+                        }).addTo(window.leafletMap)
+                        .bindPopup('<div style="text-align: center; font-family: sans-serif;"><strong>${t('map.yourLocation')}</strong></div>');
 
-                    // Add damage markers
-                    ${markers}
-
-                    // Notify React Native that map is ready
-                    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
+                        // Notify React Native that map is ready
+                        setTimeout(function() {
+                            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
+                        }, 500);
+                    }
                 </script>
             </body>
             </html>
         `;
-    };
+    }, [location, isDark, themeColor, t]);
 
     const handleWebViewMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === 'mapReady') {
+                console.log('[Map] WebView mapReady received — fetching reports now');
                 setMapReady(true);
+                // Fetch reports right after map is ready to guarantee injection timing
+                fetchReports();
             } else if (data.type === 'markerClick') {
                 const report = damageReports.find(r => r.id == data.reportId);
                 if (report) {
                     setSelectedReport(report);
                 }
+            } else if (data.type === 'mapError') {
+                console.error('[Map Error Inside WebView]:', data.message);
             }
         } catch (error) {
             console.error('Error parsing WebView message:', error);
@@ -379,7 +405,7 @@ export default function MapView({ userType }: MapViewProps) {
     const centerOnLocation = () => {
         if (location && webViewRef.current) {
             webViewRef.current.injectJavaScript(`
-                map.setView([${location.latitude}, ${location.longitude}], 15);
+                if (window.leafletMap) window.leafletMap.setView([${location.latitude}, ${location.longitude}], 15);
                 true;
             `);
         }
@@ -424,7 +450,7 @@ export default function MapView({ userType }: MapViewProps) {
             {location && (
                 <WebView
                     ref={webViewRef}
-                    source={{ html: generateMapHtml() }}
+                    source={{ html: mapHtml }}
                     style={styles.map}
                     onMessage={handleWebViewMessage}
                     javaScriptEnabled={true}
