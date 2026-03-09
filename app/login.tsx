@@ -23,6 +23,7 @@ export default function LoginScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
     const { t, i18n } = useTranslation();
+    const { login: authLogin } = useAuth();
     const isDark = colorScheme === 'dark';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -133,6 +134,10 @@ export default function LoginScreen() {
                             ['userEmail', userData.email || '']
                         ]);
 
+                        // CRITICAL: Tell the React Context to update its internal user state
+                        console.log('LOGIN: Syncing global context...');
+                        await authLogin(data.access_token);
+
                         console.log('LOGIN: Redirecting based on role:', userData.role);
                         // Redirect based on role
                         if (userData.role === 'agent') {
@@ -144,6 +149,7 @@ export default function LoginScreen() {
                         }
                     } else {
                         console.log('LOGIN: Profile fetch failed, redirecting to tabs anyway');
+                        await authLogin(data.access_token);
                         router.replace('/(tabs)');
                     }
                 } catch (profileError) {
