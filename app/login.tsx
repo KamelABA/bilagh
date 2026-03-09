@@ -18,13 +18,12 @@ import {
 } from 'react-native';
 
 import { API_ENDPOINTS, LOCAL_IP } from '@/constants/api';
-import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginScreen() {
     const colorScheme = useColorScheme();
     const router = useRouter();
     const { t, i18n } = useTranslation();
-    const { login: authLogin } = useAuth();
+
     const isDark = colorScheme === 'dark';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -135,9 +134,7 @@ export default function LoginScreen() {
                             ['userEmail', userData.email || '']
                         ]);
 
-                        // CRITICAL: Tell the React Context to update its internal user state
-                        console.log('LOGIN: Syncing global context...');
-                        await authLogin(data.access_token);
+                        console.log('LOGIN: Token and user data saved to storage.');
 
                         console.log('LOGIN: Redirecting based on role:', userData.role);
                         // Redirect based on role
@@ -150,7 +147,6 @@ export default function LoginScreen() {
                         }
                     } else {
                         console.log('LOGIN: Profile fetch failed, redirecting to tabs anyway');
-                        await authLogin(data.access_token);
                         router.replace('/(tabs)');
                     }
                 } catch (profileError) {
