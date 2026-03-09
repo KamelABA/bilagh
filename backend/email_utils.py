@@ -34,19 +34,36 @@ def send_email(to_email: str, subject: str, html_body: str) -> bool:
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-            server.login(email_user, email_password)
-            server.sendmail(email_user, to_email, msg.as_string())
-        print(f"[Email] ✅ Sent to {to_email} — {subject}")
-        return True
+        # Try port 587 (STARTTLS) — more commonly allowed by cloud providers
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(email_user, email_password)
+                server.sendmail(email_user, to_email, msg.as_string())
+            print(f"[Email] ✅ Sent via port 587 to {to_email}")
+            return True
+        except smtplib.SMTPAuthenticationError as e:
+            print(f"[Email] ❌ AUTH FAILED (port 587): {e}")
+            print("[Email] → Use a Gmail APP PASSWORD, not your regular password")
+            print("[Email] → myaccount.google.com → Security → App Passwords")
+            return False
+        except Exception as e1:
+            print(f"[Email] Port 587 failed: {type(e1).__name__}: {e1}, trying port 465...")
+            # Fallback to port 465 (SSL)
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
+                server.login(email_user, email_password)
+                server.sendmail(email_user, to_email, msg.as_string())
+            print(f"[Email] ✅ Sent via port 465 to {to_email}")
+            return True
     except smtplib.SMTPAuthenticationError as e:
-        print(f"[Email] ❌ AUTH FAILED for {email_user}: {e}")
-        print("[Email] → Make sure you are using a Gmail APP PASSWORD (not your regular password)")
-        print("[Email] → Visit: myaccount.google.com → Security → App Passwords")
+        print(f"[Email] ❌ AUTH FAILED (port 465): {e}")
         return False
     except Exception as e:
-        print(f"[Email] ❌ Failed to send to {to_email}: {type(e).__name__}: {e}")
+        print(f"[Email] ❌ Both ports failed: {type(e).__name__}: {e}")
         return False
+
 
 
 def send_report_approved_email(to_email: str, user_name: str, report_type: str,
