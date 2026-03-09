@@ -1,69 +1,59 @@
 """
-Email utility for Bilagh backend.
-Supports Gmail SMTP via app password.
+Email utility for Bilagh backend — using Resend HTTP API.
+SMTP is blocked by Railway, so we use Resend (free: 100 emails/day).
 
-Setup in Railway environment variables:
-  EMAIL_USER     = your-email@gmail.com
-  EMAIL_PASSWORD = your-gmail-app-password  (not your normal password!)
-
-To get a Gmail app password:
-  1. Enable 2FA on your Google account
-  2. Go to myaccount.google.com -> Security -> App Passwords
-  3. Generate a password for "Mail"
+Setup:
+1. Sign up free at https://resend.com
+2. Go to API Keys → Create API Key
+3. Add to Railway environment variables:
+   RESEND_API_KEY = re_xxxxxxxxxxxx
+   EMAIL_FROM     = Bilagh <onboarding@resend.dev>   (use resend's default sender until you verify your domain)
 """
 
 import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import json
+import urllib.request
+import urllib.error
 
 
 def send_email(to_email: str, subject: str, html_body: str) -> bool:
-    """Send an HTML email. Returns True if sent, False if skipped/failed."""
-    email_user = os.getenv("EMAIL_USER", "")
-    email_password = os.getenv("EMAIL_PASSWORD", "")
+    """Send an HTML email via Resend API. Returns True if sent."""
+    api_key = os.getenv("RESEND_API_KEY", "")
+    from_addr = os.getenv("EMAIL_FROM", "Bilagh <onboarding@resend.dev>")
 
-    if not email_user or not email_password:
-        print(f"[Email] Not configured — skipping email to {to_email}")
+    if not api_key:
+        print(f"[Email] Not configured — set RESEND_API_KEY in Railway variables")
         return False
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"Bilagh بلاغ <{email_user}>"
-    msg["To"] = to_email
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    payload = json.dumps({
+        "from": from_addr,
+        "to": [to_email],
+        "subject": subject,
+        "html": html_body,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST"
+    )
 
     try:
-        # Try port 587 (STARTTLS) — more commonly allowed by cloud providers
-        try:
-            with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(email_user, email_password)
-                server.sendmail(email_user, to_email, msg.as_string())
-            print(f"[Email] ✅ Sent via port 587 to {to_email}")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read())
+            print(f"[Email] ✅ Sent via Resend to {to_email} — id: {result.get('id')}")
             return True
-        except smtplib.SMTPAuthenticationError as e:
-            print(f"[Email] ❌ AUTH FAILED (port 587): {e}")
-            print("[Email] → Use a Gmail APP PASSWORD, not your regular password")
-            print("[Email] → myaccount.google.com → Security → App Passwords")
-            return False
-        except Exception as e1:
-            print(f"[Email] Port 587 failed: {type(e1).__name__}: {e1}, trying port 465...")
-            # Fallback to port 465 (SSL)
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
-                server.login(email_user, email_password)
-                server.sendmail(email_user, to_email, msg.as_string())
-            print(f"[Email] ✅ Sent via port 465 to {to_email}")
-            return True
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"[Email] ❌ AUTH FAILED (port 465): {e}")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        print(f"[Email] ❌ Resend API error {e.code}: {body}")
         return False
     except Exception as e:
-        print(f"[Email] ❌ Both ports failed: {type(e).__name__}: {e}")
+        print(f"[Email] ❌ Failed: {type(e).__name__}: {e}")
         return False
-
 
 
 def send_report_approved_email(to_email: str, user_name: str, report_type: str,
