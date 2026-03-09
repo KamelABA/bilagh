@@ -53,8 +53,7 @@ export default function MapView({ userType }: MapViewProps) {
     const isDark = colorScheme === 'dark';
     const webViewRef = useRef<WebView>(null);
 
-    const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
     const [selectedReport, setSelectedReport] = useState<DamageReport | null>(null);
     const [mapReady, setMapReady] = useState(false);
     const [damageReports, setDamageReports] = useState<DamageReport[]>([]);
@@ -189,50 +188,56 @@ export default function MapView({ userType }: MapViewProps) {
         webViewRef.current.injectJavaScript(js);
     }, [damageReports, statusFilter, mapReady]);
 
+    // GPS runs in background — map already shows immediately with Algeria center
     useEffect(() => {
         (async () => {
             try {
-                // For agent, check if there's a target location
                 if (userType === 'agent') {
                     const targetLocation = (global as any).mapTargetLocation;
                     if (targetLocation) {
-                        setLocation({
-                            latitude: targetLocation.latitude,
-                            longitude: targetLocation.longitude,
-                        });
+                        setUserLocation({ latitude: targetLocation.latitude, longitude: targetLocation.longitude });
                         (global as any).mapTargetLocation = null;
-                        setLoading(false);
                         return;
                     }
                 }
-
                 const { status } = await Location.requestForegroundPermissionsAsync();
-                if (status !== 'granted') {
-                    setLocation(ALGERIA_CENTER);
-                    setLoading(false);
-                    return;
-                }
-
-                const currentLocation = await Location.getCurrentPositionAsync({});
+                if (status !== 'granted') return;
+                const currentLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
                 const { latitude, longitude } = currentLocation.coords;
-
                 if (
-                    latitude >= ALGERIA_BOUNDS.south &&
-                    latitude <= ALGERIA_BOUNDS.north &&
-                    longitude >= ALGERIA_BOUNDS.west &&
-                    longitude <= ALGERIA_BOUNDS.east
+                    latitude >= ALGERIA_BOUNDS.south && latitude <= ALGERIA_BOUNDS.north &&
+                    longitude >= ALGERIA_BOUNDS.west && longitude <= ALGERIA_BOUNDS.east
                 ) {
-                    setLocation({ latitude, longitude });
-                } else {
-                    setLocation(ALGERIA_CENTER);
+                    setUserLocation({ latitude, longitude });
                 }
             } catch (error) {
-                setLocation(ALGERIA_CENTER);
-            } finally {
-                setLoading(false);
+                // GPS failed — map already visible, no action needed
             }
         })();
     }, [userType]);
+
+    // When map is ready AND GPS resolves, pan to user and add marker
+    useEffect(() => {
+        if (!mapReady || !webViewRef.current || !userLocation) return;
+        const { latitude, longitude } = userLocation;
+        webViewRef.current.injectJavaScript(`
+            try {
+                if (window.leafletMap) {
+                    if (window._userMarker) { window._userMarker.remove(); }
+                    window._userMarker = L.marker([${latitude}, ${longitude}], {
+                        icon: L.divIcon({
+                            className: 'user-location',
+                            html: '<div class="user-location-marker"></div>',
+                            iconSize: [20, 20], iconAnchor: [10, 10]
+                        })
+                    }).addTo(window.leafletMap)
+                    .bindPopup('<div style="text-align:center;font-family:sans-serif"><strong>📍 موقعك / Your Location</strong></div>');
+                    window.leafletMap.setView([${latitude}, ${longitude}], 14);
+                }
+            } catch(e) {}
+            true;
+        `);
+    }, [mapReady, userLocation]);
 
     const getSeverityColor = (severity: string) => {
         switch (severity) {
@@ -297,89 +302,55 @@ export default function MapView({ userType }: MapViewProps) {
         </TouchableOpacity>
     );
 
-    const mapHtml = useMemo(() => {
-        if (!location) return '';
-
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-                <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-                <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    html, body, #map { 
-                        width: 100%; 
-                        height: 100%; 
-                        background: ${isDark ? '#1a1a1a' : '#f5f5f5'};
-                    }
-                    .custom-marker { background: transparent !important; border: none !important; }
-                    .leaflet-popup-content-wrapper {
-                        border-radius: 12px;
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-                    }
-                    .leaflet-popup-tip {
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-                    }
-                    .user-location-marker {
-                        width: 20px;
-                        height: 20px;
-                        background: ${themeColor};
-                        border: 4px solid white;
-                        border-radius: 50%;
-                        box-shadow: 0 0 0 8px rgba(${themeColor === '#667eea' ? '102, 126, 234' : themeColor === '#0B5394' ? '11, 83, 148' : '74, 124, 44'}, 0.3), 0 2px 10px rgba(0,0,0,0.3);
-                    }
-                </style>
-            </head>
-            <body>
-                <div id="map"></div>
-                <script>
-                    if (!window.leafletMap) {
-                        // Algeria boundaries
-                        var algeriaBounds = L.latLngBounds(
-                            L.latLng(${ALGERIA_BOUNDS.south}, ${ALGERIA_BOUNDS.west}),
-                            L.latLng(${ALGERIA_BOUNDS.north}, ${ALGERIA_BOUNDS.east})
-                        );
-
-                        window.leafletMap = L.map('map', {
-                            zoomControl: true,
-                            attributionControl: true,
-                            maxBounds: algeriaBounds,
-                            maxBoundsViscosity: 1.0,
-                            minZoom: 5,
-                            maxZoom: 18,
-                        }).setView([${location.latitude}, ${location.longitude}], 6);
-
-                        // Add OpenStreetMap tiles
-                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                            attribution: '\u00a9 OpenStreetMap | Algeria',
-                            maxZoom: 18,
-                            minZoom: 5,
-                        }).addTo(window.leafletMap);
-
-                        // Add user location marker
-                        L.marker([${location.latitude}, ${location.longitude}], {
-                            icon: L.divIcon({
-                                className: 'user-location',
-                                html: '<div class="user-location-marker"></div>',
-                                iconSize: [20, 20],
-                                iconAnchor: [10, 10],
-                            })
-                        }).addTo(window.leafletMap)
-                        .bindPopup('<div style="text-align: center; font-family: sans-serif;"><strong>${t('map.yourLocation')}</strong></div>');
-
-                        // Notify React Native that map is ready
-                        setTimeout(function() {
-                            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
-                        }, 500);
-                    }
-                </script>
-            </body>
-            </html>
-        `;
-    }, [location, isDark, themeColor, t]);
+    // Map HTML is static — no GPS dependency, loads immediately
+    const mapHtml = useMemo(() => `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                html, body, #map { width: 100%; height: 100%; background: ${isDark ? '#1a1a1a' : '#f5f5f5'}; }
+                .custom-marker { background: transparent !important; border: none !important; }
+                .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+                .leaflet-popup-tip { box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+                .user-location-marker {
+                    width: 20px; height: 20px;
+                    background: ${themeColor};
+                    border: 4px solid white; border-radius: 50%;
+                    box-shadow: 0 0 0 8px rgba(${themeColor === '#667eea' ? '102,126,234' : themeColor === '#0B5394' ? '11,83,148' : '74,124,44'}, 0.3), 0 2px 10px rgba(0,0,0,0.3);
+                }
+            </style>
+        </head>
+        <body>
+            <div id="map"></div>
+            <script>
+                if (!window.leafletMap) {
+                    var algeriaBounds = L.latLngBounds(
+                        L.latLng(${ALGERIA_BOUNDS.south}, ${ALGERIA_BOUNDS.west}),
+                        L.latLng(${ALGERIA_BOUNDS.north}, ${ALGERIA_BOUNDS.east})
+                    );
+                    window.leafletMap = L.map('map', {
+                        zoomControl: true, attributionControl: true,
+                        maxBounds: algeriaBounds, maxBoundsViscosity: 1.0,
+                        minZoom: 5, maxZoom: 18,
+                    }).setView([${ALGERIA_CENTER.latitude}, ${ALGERIA_CENTER.longitude}], 6);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '\u00a9 OpenStreetMap | Algeria',
+                        maxZoom: 18, minZoom: 5,
+                    }).addTo(window.leafletMap);
+                    // Notify React Native immediately — no GPS wait
+                    setTimeout(function() {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
+                    }, 300);
+                }
+            </script>
+        </body>
+        </html>
+    `, [isDark, themeColor]);
 
     const handleWebViewMessage = (event: any) => {
         try {
@@ -403,24 +374,14 @@ export default function MapView({ userType }: MapViewProps) {
     };
 
     const centerOnLocation = () => {
-        if (location && webViewRef.current) {
-            webViewRef.current.injectJavaScript(`
-                if (window.leafletMap) window.leafletMap.setView([${location.latitude}, ${location.longitude}], 15);
-                true;
-            `);
-        }
+        if (!webViewRef.current) return;
+        const target = userLocation || ALGERIA_CENTER;
+        const zoom = userLocation ? 15 : 6;
+        webViewRef.current.injectJavaScript(`
+            if (window.leafletMap) window.leafletMap.setView([${target.latitude}, ${target.longitude}], ${zoom});
+            true;
+        `);
     };
-
-    if (loading) {
-        return (
-            <View style={[styles.loadingContainer, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
-                <ActivityIndicator size="large" color={themeColor} />
-                <Text style={[styles.loadingText, { color: isDark ? '#999' : '#666' }]}>
-                    {t('map.loadingMap')}
-                </Text>
-            </View>
-        );
-    }
 
     const renderFilters = () => {
         if (userType === 'municipal') {
@@ -447,22 +408,21 @@ export default function MapView({ userType }: MapViewProps) {
     return (
         <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f5f5f5' }]}>
             {/* Map WebView */}
-            {location && (
-                <WebView
-                    ref={webViewRef}
-                    source={{ html: mapHtml }}
-                    style={styles.map}
-                    onMessage={handleWebViewMessage}
-                    javaScriptEnabled={true}
-                    domStorageEnabled={true}
-                    startInLoadingState={true}
-                    renderLoading={() => (
-                        <View style={[styles.mapLoading, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-                            <ActivityIndicator size="large" color={themeColor} />
-                        </View>
-                    )}
-                />
-            )}
+            <WebView
+                ref={webViewRef}
+                source={{ html: mapHtml }}
+                style={styles.map}
+                onMessage={handleWebViewMessage}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                cacheEnabled={true}
+                startInLoadingState={true}
+                renderLoading={() => (
+                    <View style={[styles.mapLoading, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+                        <ActivityIndicator size="large" color={themeColor} />
+                    </View>
+                )}
+            />
 
             {/* Header Overlay */}
             <View style={[styles.header, { backgroundColor: isDark ? 'rgba(26,26,26,0.95)' : 'rgba(255,255,255,0.95)' }]}>

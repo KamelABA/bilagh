@@ -23,6 +23,7 @@ import risk_assessment
 from models import UserRole, ReportStatus
 import schemas
 from bson import ObjectId
+import email_utils
 
 # Shared thread pool — used to offload CPU-bound bcrypt work off the async event loop
 _thread_pool = ThreadPoolExecutor(max_workers=4)
@@ -355,7 +356,24 @@ async def approve_report(report_id: str, notes: Optional[str] = None, current_us
     res = await db.reports.update_one({"_id": ObjectId(report_id)}, {"$set": upd})
     if res.matched_count == 0: raise HTTPException(status_code=404, detail="Report not found")
     
-    # Notifications
+    # Send email to the report owner
+    try:
+        report = await db.reports.find_one({"_id": ObjectId(report_id)})
+        if report:
+            owner = await db.users.find_one({"_id": ObjectId(report["user_id"])})
+            if owner and owner.get("email"):
+                loop = asyncio.get_running_loop()
+                loop.run_in_executor(None, email_utils.send_report_approved_email,
+                    owner["email"],
+                    owner.get("full_name") or owner.get("username", "User"),
+                    report.get("type", "Unknown"),
+                    report.get("location", "Unknown"),
+                    notes or ""
+                )
+    except Exception as e:
+        print(f"[Approve] Email error (non-fatal): {e}")
+    
+    # Notifications to agents
     agents = await db.users.find({"role": UserRole.agent}).to_list(length=100)
     notifs = [{
         "user_id": str(a["_id"]), "title": "Report Approved", "message": f"Report has been approved.",
@@ -372,6 +390,23 @@ async def reject_report(report_id: str, notes: Optional[str] = None, current_use
     upd = {"status": ReportStatus.REJECTED, "municipal_notes": notes}
     res = await db.reports.update_one({"_id": ObjectId(report_id)}, {"$set": upd})
     if res.matched_count == 0: raise HTTPException(status_code=404, detail="Report not found")
+    
+    # Send rejection email to the report owner
+    try:
+        report = await db.reports.find_one({"_id": ObjectId(report_id)})
+        if report:
+            owner = await db.users.find_one({"_id": ObjectId(report["user_id"])})
+            if owner and owner.get("email"):
+                loop = asyncio.get_running_loop()
+                loop.run_in_executor(None, email_utils.send_report_rejected_email,
+                    owner["email"],
+                    owner.get("full_name") or owner.get("username", "User"),
+                    report.get("type", "Unknown"),
+                    report.get("location", "Unknown"),
+                    notes or ""
+                )
+    except Exception as e:
+        print(f"[Reject] Email error (non-fatal): {e}")
     
     agents = await db.users.find({"role": UserRole.agent}).to_list(length=100)
     notifs = [{

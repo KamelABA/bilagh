@@ -91,6 +91,7 @@ export default function ReportsScreen() {
 
     // Location picker state
     const [showLocationPicker, setShowLocationPicker] = useState(false);
+    const [showMapPicker, setShowMapPicker] = useState(false);
     const [isGettingLocation, setIsGettingLocation] = useState(false);
 
     // Reports list state
@@ -523,6 +524,15 @@ export default function ReportsScreen() {
                                     {t('reports.useCurrentLocation')}
                                 </Text>
                             </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.locationButton, { backgroundColor: isDark ? '#1a1a1a' : '#fff', marginTop: 8 }]}
+                                onPress={() => setShowMapPicker(true)}
+                            >
+                                <IconSymbol name="map.fill" size={16} color="#4A7C2C" />
+                                <Text style={[styles.locationButtonText, { color: '#4A7C2C' }]}>
+                                    اختر من الخريطة / Pick on Map
+                                </Text>
+                            </TouchableOpacity>
                         </View>
 
                         {latitude && longitude && (
@@ -774,6 +784,18 @@ export default function ReportsScreen() {
                     </ScrollView>
                 </>
             )}
+
+            {/* Map Location Picker Modal */}
+            <LocationPickerModal
+                visible={showMapPicker}
+                onClose={() => setShowMapPicker(false)}
+                onSelect={(lat, lng, address) => {
+                    setLatitude(lat);
+                    setLongitude(lng);
+                    setLocation(address);
+                    setFormErrors(prev => ({ ...prev, location: undefined }));
+                }}
+            />
 
             {/* Type Selector Modal */}
             <Modal
