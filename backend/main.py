@@ -74,6 +74,17 @@ async def test_email(to: str = "kamel.mutig14@gmail.com"):
     else:
         return {"status": "failed — check EMAIL_USER and EMAIL_PASSWORD in Railway variables", "to": to}
 
+@app.get("/debug-email-config")
+def debug_email_config():
+    import os
+    user = os.getenv("EMAIL_USER", "NOT SET")
+    pwd = os.getenv("EMAIL_PASSWORD", "NOT SET")
+    return {
+        "EMAIL_USER": user,
+        "EMAIL_PASSWORD_SET": pwd != "NOT SET",
+        "EMAIL_PASSWORD_LENGTH": len(pwd) if pwd != "NOT SET" else 0,
+    }
+
 
 
 # Authentication
