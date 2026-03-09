@@ -346,17 +346,19 @@ def predict_damage(image_data: bytes) -> Dict[str, Any]:
 
     # Get Keras probability for supplementary info (but NOT as gatekeeper)
     keras_prob = 0.0
+    keras_success = False
     if KERAS_AVAILABLE:
         try:
             keras_result = keras_predict_raw(image_data)
             keras_prob = keras_result.get("confidence", 0.0)
+            keras_success = keras_result.get("success", False)
             print(f"DEBUG [Keras] prob={keras_prob:.4f} (supplementary only, not gatekeeper)")
         except Exception as e:
             print(f"DEBUG [Keras] Error (non-fatal): {e}")
 
     # Very low Keras = definitely not a road image (faces, objects, etc.)
-    # Only use this check if Keras is available and probability is extremely low
-    if KERAS_AVAILABLE and keras_prob < KERAS_NOT_ROAD_THRESHOLD:
+    # Only use this check if Keras is available, didn't error, and probability is extremely low
+    if KERAS_AVAILABLE and keras_success and keras_prob < KERAS_NOT_ROAD_THRESHOLD:
         print(f"DEBUG [Filter] Keras {keras_prob:.1%} < {KERAS_NOT_ROAD_THRESHOLD:.0%} = not a road")
         return _not_road(orig_w, orig_h, keras_prob)
 
