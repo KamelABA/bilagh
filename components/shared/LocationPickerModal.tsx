@@ -110,17 +110,18 @@ export default function LocationPickerModal({ visible, onClose, onSelect }: Loca
                 Location.getForegroundPermissionsAsync().then(({ status }) => {
                     if (status === 'granted') {
                         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then(pos => {
-                            webViewRef.current?.injectJavaScript(`
-                                map.setView([${pos.coords.latitude}, ${pos.coords.longitude}], 14);
-                                true;
-                            `);
-                        }).catch(() => { });
+                            const lat = pos.coords.latitude;
+                            const lng = pos.coords.longitude;
+                            webViewRef.current?.injectJavaScript(
+                                `map.setView([${lat}, ${lng}], 14); true;`
+                            );
+                        }).catch((_e) => { });
                     }
-                });
+                }).catch((_e) => { });
             } else if (data.type === 'locationPicked') {
                 setSelectedCoords({ lat: data.lat, lng: data.lng });
             }
-        } catch (e) { }
+        } catch (_e) { }
     };
 
     const handleConfirm = async () => {
@@ -139,7 +140,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect }: Loca
             onSelect(selectedCoords.lat, selectedCoords.lng, addressStr);
             setSelectedCoords(null);
             onClose();
-        } catch {
+        } catch (_e) {
             // Fallback to coordinates
             onSelect(
                 selectedCoords.lat,
