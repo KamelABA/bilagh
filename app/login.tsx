@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 
 import { API_ENDPOINTS, LOCAL_IP } from '@/constants/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginScreen() {
     const colorScheme = useColorScheme();
