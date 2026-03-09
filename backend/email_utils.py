@@ -39,8 +39,13 @@ def send_email(to_email: str, subject: str, html_body: str) -> bool:
             server.sendmail(email_user, to_email, msg.as_string())
         print(f"[Email] ✅ Sent to {to_email} — {subject}")
         return True
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[Email] ❌ AUTH FAILED for {email_user}: {e}")
+        print("[Email] → Make sure you are using a Gmail APP PASSWORD (not your regular password)")
+        print("[Email] → Visit: myaccount.google.com → Security → App Passwords")
+        return False
     except Exception as e:
-        print(f"[Email] ❌ Failed to send to {to_email}: {e}")
+        print(f"[Email] ❌ Failed to send to {to_email}: {type(e).__name__}: {e}")
         return False
 
 
