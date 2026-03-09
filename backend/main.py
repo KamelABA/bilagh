@@ -85,6 +85,26 @@ def debug_email_config():
         "EMAIL_PASSWORD_LENGTH": len(pwd) if pwd != "NOT SET" else 0,
     }
 
+@app.get("/debug-smtp-connectivity")
+def debug_smtp_connectivity():
+    import socket, smtplib
+    results = {}
+    for port in [587, 465]:
+        try:
+            sock = socket.create_connection(("smtp.gmail.com", port), timeout=8)
+            sock.close()
+            results[f"port_{port}_tcp"] = "reachable"
+        except Exception as e:
+            results[f"port_{port}_tcp"] = f"BLOCKED: {e}"
+    # Try actual SMTP handshake on 587
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=8) as s:
+            greeting = s.ehlo()
+            results["smtp_587_greeting"] = str(greeting)
+    except Exception as e:
+        results["smtp_587_greeting"] = f"FAILED: {e}"
+    return results
+
 
 
 # Authentication
