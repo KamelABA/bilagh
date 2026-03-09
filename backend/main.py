@@ -52,6 +52,30 @@ def fix_id(doc):
 def read_root():
     return {"message": "Welcome to Bilagh API (MongoDB)", "version": "1.0.0"}
 
+# Test email endpoint
+@app.post("/test-email")
+async def test_email(to: str = "kamel.mutig14@gmail.com"):
+    success = email_utils.send_email(
+        to_email=to,
+        subject="✅ Bilagh Email Test — اختبار البريد الإلكتروني",
+        html_body="""
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:40px auto;padding:32px;background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.1);text-align:center;">
+            <div style="font-size:64px;">🎉</div>
+            <h2 style="color:#0B5394;">Email is working!</h2>
+            <p style="color:#555;">البريد الإلكتروني يعمل بشكل صحيح في تطبيق بلاغ.</p>
+            <p style="color:#555;">Citizens will now receive emails when their reports are approved or rejected.</p>
+            <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
+            <p style="color:#999;font-size:12px;">Bilagh بلاغ — Road Damage Reporting</p>
+        </div>
+        """
+    )
+    if success:
+        return {"status": "sent", "to": to}
+    else:
+        return {"status": "failed — check EMAIL_USER and EMAIL_PASSWORD in Railway variables", "to": to}
+
+
+
 # Authentication
 @app.post("/register", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
 async def register(user: schemas.UserCreate):
