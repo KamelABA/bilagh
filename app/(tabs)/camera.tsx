@@ -1,5 +1,6 @@
 import PredictionFeedbackModal, { FeedbackSubmission } from '@/components/PredictionFeedbackModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { API_ENDPOINTS } from '@/constants/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTranslation } from '@/hooks/useTranslation';
 import { apiService, PredictionResult } from '@/services/api';
@@ -8,7 +9,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -384,6 +385,19 @@ export default function CameraScreen() {
     const [predictionResult, setPredictionResult] = useState<PredictionResult | null>(null);
     const cameraRef = useRef<CameraView>(null);
 
+    // Warm up Railway backend as soon as camera opens (silent ping)
+    useEffect(() => {
+        const warmUp = async () => {
+            try {
+                await fetch(API_ENDPOINTS.MODEL_INFO, { method: 'GET', signal: AbortSignal.timeout(10000) });
+                console.log('[Camera] Backend warmed up ✅');
+            } catch (_e) {
+                // Silent — just warming up
+            }
+        };
+        warmUp();
+    }, []);
+
     if (!permission) {
         return <View style={styles.container} />;
     }
@@ -463,12 +477,11 @@ export default function CameraScreen() {
         setPredictionResult(null);
 
         try {
-            console.log('Camera Analysis - Resizing image before upload...');
-            // Resize image to max 1024px to prevent upload issues and reduce server memory load
+            // Resize to 640px — YOLO native input size, faster upload & inference
             const manipulatedImage = await ImageManipulator.manipulateAsync(
                 capturedImage,
-                [{ resize: { width: 1024 } }],
-                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                [{ resize: { width: 640 } }],
+                { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG }
             );
 
             console.log('Camera Analysis - Starting prediction for:', manipulatedImage.uri);
