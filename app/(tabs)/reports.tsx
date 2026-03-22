@@ -1,3 +1,4 @@
+import LocationPickerModal from '@/components/shared/LocationPickerModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { API_ENDPOINTS } from '@/constants/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
