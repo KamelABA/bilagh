@@ -60,8 +60,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "03108d81-a67a-4ae3-ba6f-354818bf1eaf"
+        "projectId": "e8f5c60f-d8a5-46e9-a5c7-d7b07a7f047f"
       }
-    }
+    },
+    "owner": "kamelaba"
   }
 }
