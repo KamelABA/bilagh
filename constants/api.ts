@@ -2,7 +2,7 @@
 // ─── API Configuration ───────────────────────────────────────────────────────
 // ⚠️  DEVELOPMENT MODE — Railway URL is being redeployed
 // Switch back to PRODUCTION_API_URL once Railway is live again.
-const PRODUCTION_API_URL = 'https://web-production-3f689.up.railway.app';
+const PRODUCTION_API_URL = 'https://web-production-2a2b6.up.railway.app';
 
 // Local backend — phone and PC must be on the same WiFi
 export const LOCAL_IP = '192.168.2.224';

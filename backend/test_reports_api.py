@@ -13,7 +13,7 @@ if user:
     token = auth.create_access_token(data={"sub": user["email"]})
     print(f"Token: {token[:20]}...")
     
-    res = requests.get("https://web-production-3f689.up.railway.app/reports/map", headers={"Authorization": f"Bearer {token}"})
+    res = requests.get("https://web-production-2a2b6.up.railway.app/reports/map", headers={"Authorization": f"Bearer {token}"})
     print("Status:", res.status_code)
     try:
         data = res.json()
