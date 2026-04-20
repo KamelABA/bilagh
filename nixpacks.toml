@@ -1,5 +1,7 @@
 # Let Nixpacks use its default Python provider which automatically
 # sets up a virtual environment (/opt/venv) to avoid PEP 668 errors.
 
+providers = ["python"]
+
 [start]
-cmd = "cd backend && python3 startup_download_models.py && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
+cmd = "cd backend && python startup_download_models.py && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
