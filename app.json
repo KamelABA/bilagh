@@ -25,6 +25,9 @@
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ],
       "config": {
@@ -63,6 +66,12 @@
         "projectId": "e8f5c60f-d8a5-46e9-a5c7-d7b07a7f047f"
       }
     },
-    "owner": "kamelaba"
+    "owner": "kamelaba",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e8f5c60f-d8a5-46e9-a5c7-d7b07a7f047f"
+    }
   }
 }
